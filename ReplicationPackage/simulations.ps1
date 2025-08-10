@@ -29,7 +29,7 @@ dotnet-rgit --cmd simulate-recommender --recommendation-strategy RetentionRec --
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy LearnRec --simulation-type "SeededRandom" --conf-path $corefx_conf_RQ1
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy TurnoverRec --simulation-type "SeededRandom" --conf-path $corefx_conf_RQ1
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy WhoDo --simulation-type "SeededRandom" --conf-path $corefx_conf_RQ1
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy Reality --simulation-type "SeededRandom" --conf-path $corefx_conf_RQ1
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy Reality --conf-path $corefx_conf_RQ1
 
 # RQ1 CoreCLR Simulations
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy cHRev --simulation-type "SeededRandom" --conf-path $coreclr_conf_RQ1
@@ -39,7 +39,7 @@ dotnet-rgit --cmd simulate-recommender --recommendation-strategy RetentionRec --
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy LearnRec --simulation-type "SeededRandom" --conf-path $coreclr_conf_RQ1
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy TurnoverRec --simulation-type "SeededRandom" --conf-path $coreclr_conf_RQ1
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy WhoDo --simulation-type "SeededRandom" --conf-path $coreclr_conf_RQ1
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy Reality --simulation-type "SeededRandom" --conf-path $coreclr_conf_RQ1
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy Reality --conf-path $coreclr_conf_RQ1
 
 # RQ1 Roslyn Simulations
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy cHRev --simulation-type "SeededRandom" --conf-path $roslyn_conf_RQ1
@@ -49,7 +49,7 @@ dotnet-rgit --cmd simulate-recommender --recommendation-strategy RetentionRec --
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy LearnRec --simulation-type "SeededRandom" --conf-path $roslyn_conf_RQ1
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy TurnoverRec --simulation-type "SeededRandom" --conf-path $roslyn_conf_RQ1
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy WhoDo --simulation-type "SeededRandom" --conf-path $roslyn_conf_RQ1
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy Reality --simulation-type "SeededRandom" --conf-path $roslyn_conf_RQ1
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy Reality --conf-path $roslyn_conf_RQ1
 
 # RQ1 Rust Simulations
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy cHRev --simulation-type "SeededRandom" --conf-path $rust_conf_RQ1
@@ -59,7 +59,7 @@ dotnet-rgit --cmd simulate-recommender --recommendation-strategy RetentionRec --
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy LearnRec --simulation-type "SeededRandom" --conf-path $rust_conf_RQ1
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy TurnoverRec --simulation-type "SeededRandom" --conf-path $rust_conf_RQ1
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy WhoDo --simulation-type "SeededRandom" --conf-path $rust_conf_RQ1
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy Reality --simulation-type "SeededRandom" --conf-path $rust_conf_RQ1
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy Reality --conf-path $rust_conf_RQ1
 
 # RQ1 Kubernetes Simulations
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy cHRev --simulation-type "SeededRandom" --conf-path $kubernetes_conf_RQ1
@@ -69,7 +69,7 @@ dotnet-rgit --cmd simulate-recommender --recommendation-strategy RetentionRec --
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy LearnRec --simulation-type "SeededRandom" --conf-path $kubernetes_conf_RQ1
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy TurnoverRec --simulation-type "SeededRandom" --conf-path $kubernetes_conf_RQ1
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy WhoDo --simulation-type "SeededRandom" --conf-path $kubernetes_conf_RQ1
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy Reality --simulation-type "SeededRandom" --conf-path $kubernetes_conf_RQ1
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy Reality --conf-path $kubernetes_conf_RQ1
 
 
 # RQ2: Recommenders++
@@ -224,10 +224,10 @@ dotnet-rgit --cmd simulate-recommender --recommendation-strategy TurnoverRec --s
 # RQ4_4 Kubernetes Simulations
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy TurnoverRec --simulation-type "SeededRandom" --conf-path $kubernetes_conf_RQ4_4
 
-# Get Results from the Analyzer
-# First run the previous commands and restore the Simulation-Ids from the database. Then, update the Simulation-Ids and Reality-Id for each project and run the following commands.
-dotnet-rgit --cmd analyze-simulations --analyze-result-path "\absolute\path\to\CoreFX_Results_Directory" --recommender-simulation <CoreFX-Simulation-Ids-SeparatedWithSpace> --reality-simulation <Reality-Id> --conf-path $corefx_conf_RQ1
-dotnet-rgit --cmd analyze-simulations --analyze-result-path "\absolute\path\to\CoreCLR_Results_Directory" --recommender-simulation <CoreCLR-Simulation-Ids-SeparatedWithSpace> --reality-simulation <Reality-Id> --conf-path $coreclr_conf_RQ1
-dotnet-rgit --cmd analyze-simulations --analyze-result-path "\absolute\path\to\Roslyn_Results_Directory" --recommender-simulation <Roslyn-Simulation-Ids-SeparatedWithSpace> --reality-simulation <Reality-Id> --conf-path $roslyn_conf_RQ1
-dotnet-rgit --cmd analyze-simulations --analyze-result-path "\absolute\path\to\Rust_Results_Directory" --recommender-simulation <Rust-Simulation-Ids-SeparatedWithSpace> --reality-simulation <Reality-Id> --conf-path $rust_conf_RQ1
-dotnet-rgit --cmd analyze-simulations --analyze-result-path "\absolute\path\to\Kubernetes_Results_Directory" --recommender-simulation <Kubernetes-Simulation-Ids-SeparatedWithSpace> --reality-simulation <Reality-Id> --conf-path $kubernetes_conf_RQ1
+## Get Results from the Analyzer
+## You should first run the previous commands and restore the Simulation-Ids from the database. Then, update the Simulation IDs and Reality ID for each project and run the following commands.
+# dotnet-rgit --cmd analyze-simulations --analyze-result-path "\absolute\path\to\CoreFX_Results_Directory" --recommender-simulation <CoreFX-Simulation-Ids-SeparatedWithSpace> --reality-simulation <Reality-Id> --conf-path $corefx_conf_RQ1
+# dotnet-rgit --cmd analyze-simulations --analyze-result-path "\absolute\path\to\CoreCLR_Results_Directory" --recommender-simulation <CoreCLR-Simulation-Ids-SeparatedWithSpace> --reality-simulation <Reality-Id> --conf-path $coreclr_conf_RQ1
+# dotnet-rgit --cmd analyze-simulations --analyze-result-path "\absolute\path\to\Roslyn_Results_Directory" --recommender-simulation <Roslyn-Simulation-Ids-SeparatedWithSpace> --reality-simulation <Reality-Id> --conf-path $roslyn_conf_RQ1
+# dotnet-rgit --cmd analyze-simulations --analyze-result-path "\absolute\path\to\Rust_Results_Directory" --recommender-simulation <Rust-Simulation-Ids-SeparatedWithSpace> --reality-simulation <Reality-Id> --conf-path $rust_conf_RQ1
+# dotnet-rgit --cmd analyze-simulations --analyze-result-path "\absolute\path\to\Kubernetes_Results_Directory" --recommender-simulation <Kubernetes-Simulation-Ids-SeparatedWithSpace> --reality-simulation <Reality-Id> --conf-path $kubernetes_conf_RQ1
