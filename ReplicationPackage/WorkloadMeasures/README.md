@@ -1,4 +1,4 @@
-Please take a look at the overall replication package [ReadME File](../README.md) for the full simulation details. The following steps get the reviewers open reviews across projects. Then you should use this data to calculate the final Gini-Workload of reviewers.
+Please review the overall replication package [ReadMe File](../README.md) for complete simulation details. The following steps get reviewers' open reviews across projects. Then you should use this data to calculate the final Gini-Workload of reviewers.
 
 ### Get the Open Reviews from the database
 
@@ -42,7 +42,6 @@ WITH OpenReview AS (
     GROUP BY Project, DATEPART(YEAR, DateTime), DATEPART(QUARTER, DateTime), NormalizedName
 )
 SELECT 
-    PullIndex,
     MAX(CASE WHEN Project = 'CoreFX' THEN pulls END) AS CoreFX,
     MAX(CASE WHEN Project = 'CoreCLR' THEN pulls END) AS CoreCLR,
     MAX(CASE WHEN Project = 'Roslyn' THEN pulls END) AS Roslyn,
@@ -54,8 +53,8 @@ ORDER BY PullIndex;
 
 ```
 
-Note: This query takes about 8~10 minutes to run for each recommender. The data from our simulations are available in [ResultsCSV](Data/Workload/Simulated/) Directory.
+Note: This query takes about 8~10 minutes to run for each recommender. The data from our simulations is available in [ResultsCSV](../ResultsCSV/WorkloadAUC/Simulated/) Directory.
 
 ### How to calculate the Gini-Workload for each recommender.
 
-To calculate the Gini-Workload outcome for each recommender you should run the [WorkloadAUC.r](WorkloadMeasures/WorkloadAUC.R) script. 
+To calculate the Gini-Workload outcome for each recommender, you should run the [WorkloadAUC.r](WorkloadAUC.R) script. 
