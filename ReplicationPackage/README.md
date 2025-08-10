@@ -10,18 +10,18 @@ The overall steps are
 
 ## Install Relational Git
 
-1) [Install](https://github.com/fahimeh1368/SofiaWL/blob/gh-pages/install.md) the Relational Git and its dependencies.
+1) [Install](../README.md) the Relational Git and its dependencies.
 
 ## Get the Database
 
-1) Restore the data backup into MS SQL Server from [Figshare](https://figshare.com/s/b79fc69acad8e11be31a). There is a separate database for each studied project. Note that the databases are over 15GB.
-2) Copy the configuration files and simulation.ps1 which are provided in the replication package.
+1) Restore the data backup into MS SQL Server from [Figshare](https://figshare.com/s/b79fc69acad8e11be31a). There is a separate database for each studied project. Note that the databases are approximately 2 GB in size.
+2) Copy the configuration files and simulation.ps1, which are provided in the replication package.
 3) Open and modify each configuration file to set the connection string. You need to provide the server address along with the credentials. The following snippet shows a sample of how the connection string should be set.
 
 ```json
  {
 	"ConnectionStrings": {
-	  "RelationalGit": "Server=ip_db_server;User Id=user_name;Password=pass_word;Database=coreclr"
+	  "RelationalGit": "Server=ip_db_server;User Id=user_name;Password=pass_word;Database=Roslyn_PlusPlus"
 	},
 	"Mining":{
  		
@@ -29,7 +29,9 @@ The overall steps are
  }
 ```
 
-4) Open [simulations.ps1](simulations.ps1) using an editor and make sure the corresponding config variables for each research question are defined in the file and refer to the correct location. For instance, each of the following variables contains the absolute path of the corresponding configuration file for the first research question.
+## Run the Simulations
+
+1) Open [simulations.ps1](simulations.ps1) using an editor and make sure the corresponding config variables for each research question are defined in the file and refer to the correct location. For instance, each of the following variables contains the absolute path of the corresponding configuration file for the first research question.
 
 
 ```PowerShell
@@ -40,23 +42,21 @@ $rust_conf_RQ1 = "RQ1/absolute/path/to/rust_conf.json"
 $kubernetes_conf_RQ1 = "RQ1/absolute/path/to/kubernetes_conf.json"
 ```
 
-## Run the Simulations
-
-1) Run the [simulations.ps1](simulations.ps1) script. Open PowerShell and run the following command in the directory of the file
+2) Run the [simulations.ps1](simulations.ps1) script. Open PowerShell and run the following command in the directory of the file
 
 ``` PowerShell
 ./simulations.ps1
 ```
 
-This script runs all the defined reviewer recommendation algorithms across all projects.
+This script simulates the performance of all the defined reviewer recommendation algorithms across all projects.
 
 **Note**: Make sure you have set the PowerShell [execution policy](https://superuser.com/questions/106360/how-to-enable-execution-of-powershell-scripts) to **Unrestricted** or **RemoteAssigned**.
 
-## Research Questions
+## If you want to run the simulations separately for each RQ
 
-The following sections describe the commands needed to run simulations for each research question. For each simulation, a sample is provided that illustrates how the simulation can be run using the tool.
+If you want to run the simulation separately, the following sections describe the commands needed to run simulations for each research question. For each simulation, a sample is provided that illustrates how to run the simulation using the tool.
 
-**Note:** To run the simulations for each of the following research questions, you need to change the config file of all five projects. To avoid confusion, we suggest creating an exclusive config file for each research question.
+**Note:** To run the simulations for each of the following research questions, you need to change the config file of all three projects. To avoid confusion, we recommend creating a separate configuration file for each research question.
 
 ### Simulation RQ1, Baseline: On PRKRs, how well do existing recommenders perform?
 
@@ -125,7 +125,7 @@ dotnet-rgit --cmd simulate-recommender --recommendation-strategy WhoDo --conf-pa
 
 ### Simulation RQ3, FarAwareRec: What is the impact of adding a reviewer on abandoned files and replacing a reviewer on hoarded files for PRKRs?
 
-To run the FarAwareRec approach, you should apply the following change to the projects' config files.
+To run the FarAwareRec approach, you should apply the following change to each project's config files.
 
 ```
 "PullRequestReviewerSelectionStrategy" : "0:nothing-nothing,-:addAndReplace-1",
@@ -179,7 +179,7 @@ dotnet-rgit --cmd simulate-recommender --recommendation-strategy TurnoverRec --s
 
 ## Dump the Simulation Data to CSV
 
-Log into the database of each project and run the following command to find the IDs of your simulation.
+Log in to the database of each project and run the following command to find the IDs of your simulation.
 
 ```SQL
 -- Get the Id of the simulation 
@@ -203,7 +203,7 @@ dotnet-rgit --cmd analyze-simulations --analyze-result-path <path_to_result> --r
 
 ### Results for the outcome measures:
 
-After running the analyzer, the tool creates five CSV files: **Expertise.csv**, **FaR.csv**, **Core_Workload.csv**, **ReviewerPlusPlus.csv**, and **AUC.csv**. The first column shows the project's periods (quarters) in the first four files. Each column corresponds to one of the simulations. Each cell of the first three files shows the percentage change between the actual and simulated outcomes in that period. The last two rows show the *median* and *average* of columns. The **ReviewerPlusPlus.csv** file shows the proportion of pull requests to which a recommender adds an extra reviewer in each period. The last rows of this file present the *Reveiwer++* outcome during the whole lifetime of projects. The **AUC.csv** file indicates the number of reviews for each developer. To calculate the *gini-workload* and plot the Lorenz-Curve for each recommender, you should run the [WorkloadAUC.r](WorkloadMeasures/WorkloadAUC.R) script. Note that the **Core_Workload.csv** file includes the number of reviews for the top 10 reviewers in each period. This outcome measure is defined in our [prior work](https://dl.acm.org/doi/10.1145/3377811.3380335) that was published in ICSE.
+After running the analyzer, the tool creates four CSV files: **Expertise.csv**, **FaR.csv**, **Core_Workload.csv**, and **ReviewerPlusPlus.csv**. The first column shows the project's periods (quarters) in the first four files. Each column corresponds to one of the simulations. Each cell in the first four files displays the percentage change between the actual and simulated outcomes for that period. The last two rows show the *median* and *average* of columns. The **ReviewerPlusPlus.csv** file shows the proportion of pull requests to which a recommender adds an extra reviewer in each period. The last rows of this file present the *Reviewer++* outcome during the whole lifetime of projects. Note that the **Core_Workload.csv** file includes the number of reviews for the top 10 reviewers in each period. This outcome measure is defined in [prior work](https://dl.acm.org/doi/10.1145/3377811.3380335) that was published in ICSE 2020. To calculate the Gini-Workload of reviewers, follow the instructions in [WorkloadAUC.r](WorkloadMeasures/README.md).
 
 ### Our Simulation IDs:
 
