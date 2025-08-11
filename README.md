@@ -41,7 +41,7 @@ RelationalGit has been built on top of the most popular Git Libraries. It uses [
 RelationalGit is a [dotnet Global tool](https://www.nuget.org/packages/RelationalGit). You should install the following tool to run the simulations. You can use it seamlessly with your favorite command-line application. 
 
 ```PowerShell
-dotnet tool install --global SofiaWL-LearnerPlusPlus --version 1.1.1
+dotnet tool install --global SofiaWL-LearnerPlusPlus --version 1.1.2
 ```
 
 # Replication
