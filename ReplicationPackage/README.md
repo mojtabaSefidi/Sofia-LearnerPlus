@@ -52,43 +52,52 @@ This script simulates the performance of all the defined reviewer recommendation
 
 **Note**: Make sure you have set the PowerShell [execution policy](https://superuser.com/questions/106360/how-to-enable-execution-of-powershell-scripts) to **Unrestricted** or **RemoteAssigned**.
 
-## If you want to run the simulations separately for each RQ
+## If you want to run the simulations separately for each RQ:
 
-If you want to run the simulation separately, the following sections describe the commands needed to run simulations for each research question. For each simulation, a sample is provided that illustrates how to run the simulation using the tool.
+The following sections describe the commands needed to run simulations for each research question. For each simulation, a sample is provided that illustrates how to run the simulation using the tool.
 
 **Note:** To run the simulations for each of the following research questions, you need to change the config file of all three projects. To avoid confusion, we recommend creating a separate configuration file for each research question.
 
 ### Simulation RQ1, Baseline: On PRKRs, how well do existing recommenders perform?
 
-On PRKRs, to replicate the performance of recommenders at the replacement level, you should apply the following change to each project's config file.
+On PRKRs, to replicate the performance of recommenders at the replacement level, you should apply the following change to each project's config file. In this way, one of the reviewers of PRKRs will be randomly (seeded) replaced with the top-recommended candidate. 
 
 ```
 "PullRequestReviewerSelectionStrategy" : "0:nothing-nothing,-:farreplacerandom-1",
 ```
 
-In this way, one of the reviewers of PRKRs will be randomly (seeded) replaced with the top-recommended candidate. Then you should run the following commands for each project to simulate the performance of recommenders.
+In the next step, you should run the cHRev to obtain the seeded indices for all the PRs.
 
 ```PowerShell
-# Reality
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy Reality --conf-path <path_to_config_file>
 # cHRev Recommender
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy cHRev --simulation-type "Random" --conf-path <path_to_config_file>
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy cHRev --simulation-type "Random" --conf-path <path_to_replace_all_config_file>
+```
+
+Then, you should run the following commands for each project to simulate the performance of recommenders on PRKRs. 
+
+```PowerShell
+# cHRev Recommender
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy cHRev --simulation-type "Random" --conf-path <path_to_replace_all_config_file>
+# Reality
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy Reality --conf-path <path_to_rq1_config_file>
+# cHRev Recommender
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy cHRev --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
 # AuthorshipRec Recommender
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy AuthorshipRec --simulation-type "SeededRandom" --conf-path <path_to_config_file>
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy AuthorshipRec --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
 # RevOwnRec Recommender
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy RevOwnRec --simulation-type "SeededRandom" --conf-path <path_to_config_file>
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy RevOwnRec --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
 # LearnRec Recommender
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy LearnRec --simulation-type "SeededRandom" --conf-path <path_to_config_file>
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy LearnRec --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
 # RetentionRec Recommender
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy RetentionRec --simulation-type "SeededRandom" --conf-path <path_to_config_file>
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy RetentionRec --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
 # TurnoverRec Recommender
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy TurnoverRec --simulation-type "SeededRandom" --conf-path <path_to_config_file>
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy TurnoverRec --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
 # Sofia Recommender
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy Sofia --simulation-type "SeededRandom" --conf-path <path_to_config_file>
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy Sofia --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
 #WhoDo recommender
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy WhoDo --simulation-type "SeededRandom" --conf-path <path_to_config_file>
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy WhoDo --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
 # SofiaWL Recommender
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy SofiaWL --simulation-type "SeededRandom" --conf-path <path_to_config_file>
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy SofiaWL --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
 ```
 
 **Note**: In order to select between ```Random``` and ```SeededRandom```, adjust the ```--simulation-type``` command. If you want to run the seeded version, set the value of ```--simulation-type``` to ```Random``` for **cHRev** and all the other algorithms to ```SeededRandom```. If you wish to run the random version, set the value of ```--simulation-type``` to ```Random``` for all the algorithms.
@@ -103,7 +112,7 @@ To run the Recommenders++ strategy, you should apply the following change to the
 "PullRequestReviewerSelectionStrategy" : "0:nothing-nothing,-:add-1",
 ```
 
-In the next step, simulate each recommender. Since the Recommenders++ strategy suggests an extra reviewer for all PRKRs and doesn't do any replacement, there is no need to use the ```--simulation-type``` command.
+In the next step, you should run the following commands to simulate each recommender. Since the Recommenders++ strategy suggests an extra reviewer for all PRKRs and doesn't do any replacement, there is no need to use the ```--simulation-type``` command.
 
 ```PowerShell
 # AuthorshipRec++ Recommender
