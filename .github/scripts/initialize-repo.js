@@ -62,17 +62,13 @@ async function processCommit(commit, contributorMap, fileMap, contributions) {
       
       // Record contribution
       contributions.push({
-        contributor_id: contributor.temp_id,
-        file_id: file.temp_id,
+        contributor_email: contributor.email,
+        contributor_canonical_name: contributor.canonical_name,
+        file_path: file.canonical_path,
         activity_type: 'commit',
         activity_id: commit.hash,
         contribution_date: new Date(commit.date)
       });
-      
-      // Record file history for renames
-      if (fileChange.status === 'R') {
-        // Handle rename later when we have actual database IDs
-      }
     }
   } catch (error) {
     console.warn(`⚠️ Could not process commit ${commit.hash}: ${error.message}`);
@@ -90,7 +86,6 @@ async function getOrCreateContributor(commit, contributorMap) {
   
   if (!contributor) {
     contributor = {
-      temp_id: `temp_contributor_${contributorMap.size + 1}`,
       github_login: await getGitHubLogin(email, name),
       canonical_name: normalizedName,
       email: email
@@ -107,7 +102,6 @@ async function getOrCreateFile(fileChange, fileMap) {
   
   if (!file) {
     file = {
-      temp_id: `temp_file_${fileMap.size + 1}`,
       canonical_path: path,
       current_path: path
     };
@@ -216,102 +210,92 @@ async function insertContributions(contributions) {
   
   console.log(`🔗 Processing ${contributions.length} contributions...`);
   
-  // First, get the actual IDs from the database
-  const { data: contributors, error: contributorError } = await supabase
+  // Get the actual IDs from the database
+  const { data: dbContributors, error: contributorError } = await supabase
     .from('contributors')
     .select('id, canonical_name, github_login, email');
     
-  if (contributorError) throw contributorError;
+  if (contributorError) {
+    console.error('Error fetching contributors:', contributorError);
+    throw contributorError;
+  }
     
-  const { data: files, error: filesError } = await supabase
+  const { data: dbFiles, error: filesError } = await supabase
     .from('files')
     .select('id, canonical_path');
   
-  if (filesError) throw filesError;
-  
-  // Create mapping from temp IDs to actual IDs
-  const contributorIdMap = new Map();
-  contributors.forEach(c => {
-    contributorIdMap.set(c.email, c.id);
-    contributorIdMap.set(c.canonical_name, c.id);
-  });
-  
-  const fileIdMap = new Map();
-  files.forEach(f => fileIdMap.set(f.canonical_path, f.id));
-  
-  // Map contributions to actual IDs
-  let mappedContributions = [];
-  let skippedContributions = 0;
-  
-  for (const contribution of contributions) {
-    // Find contributor by temp_id
-    const contributorTempId = contribution.contributor_id;
-    const fileTempId = contribution.file_id;
-    
-    // We need to map these back to actual values
-    // This is a bit tricky since we used temp IDs, let's use a different approach
-    
-    // For now, skip the mapping complexity and insert directly
-    // We'll fix this by changing the approach above
+  if (filesError) {
+    console.error('Error fetching files:', filesError);
+    throw filesError;
   }
   
-  // Alternative approach: rebuild contributions with actual lookups
-  console.log('🔄 Re-scanning commits for contribution insertion...');
+  console.log(`📊 Found ${dbContributors.length} contributors and ${dbFiles.length} files in database`);
   
-  // Get all commits again and map directly to database IDs
-  const log = await git.log({ '--all': null });
-  const commits = log.all;
+  // Create lookup maps
+  const contributorLookup = new Map();
+  dbContributors.forEach(c => {
+    contributorLookup.set(c.email, c.id);
+    contributorLookup.set(c.canonical_name, c.id);
+  });
   
-  mappedContributions = [];
+  const fileLookup = new Map();
+  dbFiles.forEach(f => {
+    fileLookup.set(f.canonical_path, f.id);
+  });
   
-  for (const commit of commits.reverse()) {
-    try {
-      const show = await git.show([commit.hash, '--name-status', '--format=']);
-      const files = parseGitShowOutput(show);
-      
-      // Find contributor
-      const contributor = contributors.find(c => 
-        c.email === commit.author_email || 
-        c.canonical_name === normalizeName(commit.author_name)
-      );
-      
-      if (!contributor) continue;
-      
-      // Process files
-      for (const fileChange of files) {
-        const file = files.find(f => f.canonical_path === fileChange.file);
-        if (!file) continue;
-        
-        mappedContributions.push({
-          contributor_id: contributor.id,
-          file_id: file.id,
-          activity_type: 'commit',
-          activity_id: commit.hash,
-          contribution_date: new Date(commit.date)
-        });
+  // Map contributions to database IDs
+  const mappedContributions = [];
+  let skippedCount = 0;
+  
+  for (const contribution of contributions) {
+    const contributorId = contributorLookup.get(contribution.contributor_email) || 
+                         contributorLookup.get(contribution.contributor_canonical_name);
+    const fileId = fileLookup.get(contribution.file_path);
+    
+    if (contributorId && fileId) {
+      mappedContributions.push({
+        contributor_id: contributorId,
+        file_id: fileId,
+        activity_type: contribution.activity_type,
+        activity_id: contribution.activity_id,
+        contribution_date: contribution.contribution_date
+      });
+    } else {
+      skippedCount++;
+      if (skippedCount <= 5) { // Log first few for debugging
+        console.warn(`⚠️ Skipping contribution - Contributor: ${contribution.contributor_email} (ID: ${contributorId}), File: ${contribution.file_path} (ID: ${fileId})`);
       }
-    } catch (error) {
-      console.warn(`⚠️ Skipping commit ${commit.hash}: ${error.message}`);
     }
   }
   
-  console.log(`🔗 Inserting ${mappedContributions.length} mapped contributions...`);
+  console.log(`🔗 Mapped ${mappedContributions.length} contributions (skipped ${skippedCount})`);
+  
+  if (mappedContributions.length === 0) {
+    console.warn('⚠️ No contributions to insert after mapping!');
+    return;
+  }
   
   // Insert in batches
   const batchSize = 500;
+  let totalInserted = 0;
+  
   for (let i = 0; i < mappedContributions.length; i += batchSize) {
     const batch = mappedContributions.slice(i, i + batchSize);
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('contributions')
-      .insert(batch);
+      .insert(batch)
+      .select('id');
     
     if (error) {
       console.error('Error inserting contributions batch:', error);
-      // Don't throw here, just log and continue
+      // Continue with next batch instead of failing completely
     } else {
-      console.log(`🔗 Inserted contributions batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(mappedContributions.length/batchSize)}`);
+      totalInserted += batch.length;
+      console.log(`🔗 Inserted contributions batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(mappedContributions.length/batchSize)} (${totalInserted} total)`);
     }
   }
+  
+  console.log(`✅ Successfully inserted ${totalInserted} contributions`);
 }
 
 async function updateMetadata(key, value) {
