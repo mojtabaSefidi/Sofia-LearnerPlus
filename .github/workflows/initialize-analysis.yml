@@ -1,0 +1,52 @@
+# .github/workflows/initialize-analysis.yml
+name: Initialize Repository Analysis
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_reinit:
+        description: 'Force re-initialization (will clear existing data)'
+        required: false
+        default: 'false'
+
+jobs:
+  initialize:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Get full history
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Install Dependencies
+        run: |
+          cd .github
+          npm install
+          
+      - name: Initialize Database Schema
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          # Run database setup if needed
+          echo "Database schema should be set up manually in Supabase dashboard"
+          
+      - name: Initialize Repository Analysis
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          FORCE_REINIT: ${{ github.event.inputs.force_reinit }}
+        run: |
+          cd .github
+          node scripts/initialize-repo.js
+          
+      - name: Summary
+        run: |
+          echo "🎉 Repository analysis initialization completed!"
+          echo "The system is now ready to provide reviewer suggestions on new PRs."
