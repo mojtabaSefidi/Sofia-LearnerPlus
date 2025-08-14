@@ -286,6 +286,8 @@ async function getGitHubLogin(email, name) {
   return normalizeName(name);
 }
 
+// Replace the insertContributors function with this updated version:
+
 async function insertContributors(contributors) {
   if (contributors.length === 0) return;
   
@@ -293,23 +295,43 @@ async function insertContributors(contributors) {
   
   // Insert in batches to avoid overwhelming the database
   const batchSize = 50;
+  let totalInserted = 0;
+  let totalSkipped = 0;
+  
   for (let i = 0; i < contributors.length; i += batchSize) {
     const batch = contributors.slice(i, i + batchSize);
-    const { error } = await supabase
-      .from('contributors')
-      .insert(batch.map(c => ({
-        github_login: c.github_login || c.canonical_name,
-        canonical_name: c.canonical_name,
-        email: c.email
-      })));
     
-    if (error) {
-      console.error('Error inserting contributors batch:', error);
-      throw error;
+    // Insert contributors one by one to handle duplicates gracefully
+    for (const contributor of batch) {
+      try {
+        const { error } = await supabase
+          .from('contributors')
+          .insert({
+            github_login: contributor.github_login || contributor.canonical_name,
+            canonical_name: contributor.canonical_name,
+            email: contributor.email
+          });
+        
+        if (error) {
+          if (error.code === '23505') {
+            // Duplicate key error - this is expected, skip silently
+            totalSkipped++;
+          } else {
+            throw error;
+          }
+        } else {
+          totalInserted++;
+        }
+      } catch (error) {
+        console.error(`Error inserting contributor ${contributor.github_login}:`, error);
+        totalSkipped++;
+      }
     }
     
-    console.log(`📝 Inserted contributors batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(contributors.length/batchSize)}`);
+    console.log(`📝 Processed contributors batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(contributors.length/batchSize)} (inserted: ${totalInserted}, skipped: ${totalSkipped})`);
   }
+  
+  console.log(`📊 Contributors insertion completed: ${totalInserted} inserted, ${totalSkipped} skipped duplicates`);
 }
 
 async function insertFiles(files) {
