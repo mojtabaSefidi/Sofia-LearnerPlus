@@ -1,9 +1,9 @@
 -- .github/scripts/db-setup.sql
 
--- Contributors table
+-- Contributors table - Remove unique constraint on github_login to allow duplicates initially
 CREATE TABLE contributors (
     id SERIAL PRIMARY KEY,
-    github_login VARCHAR(255) UNIQUE NOT NULL,
+    github_login VARCHAR(255) NOT NULL,
     canonical_name VARCHAR(255) NOT NULL,
     email VARCHAR(255),
     created_at TIMESTAMP DEFAULT NOW()
@@ -64,3 +64,4 @@ CREATE INDEX idx_contributions_file ON contributions(file_id);
 CREATE INDEX idx_contributions_activity ON contributions(activity_type, activity_id);
 CREATE INDEX idx_file_history_file ON file_history(file_id);
 CREATE INDEX idx_contributors_login ON contributors(github_login);
+CREATE INDEX idx_contributors_email ON contributors(email);
