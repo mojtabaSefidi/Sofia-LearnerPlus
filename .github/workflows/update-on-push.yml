@@ -1,0 +1,37 @@
+# .github/workflows/update-on-push.yml
+name: Update Analysis Data
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    types: [closed]
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Get current and previous commit
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Install Dependencies
+        run: |
+          cd .github
+          npm install
+          
+      - name: Update Repository Data
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd .github
+          node scripts/update-data.js
