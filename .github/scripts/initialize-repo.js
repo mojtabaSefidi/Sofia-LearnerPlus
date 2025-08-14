@@ -9,6 +9,8 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
+// Replace the initializeRepository function with this updated version:
+
 async function initializeRepository() {
   console.log('🚀 Starting repository initialization...');
   
@@ -28,15 +30,18 @@ async function initializeRepository() {
       await processCommit(commit, contributorMap, fileMap, contributions);
     }
     
-    // Insert data into Supabase
-    await insertContributors(Array.from(contributorMap.values()));
+    // Insert files first
     await insertFiles(Array.from(fileMap.values()));
     
-    // Deduplicate contributors before inserting contributions
+    // Insert contributors (may have duplicates)
+    await insertContributors(Array.from(contributorMap.values()));
+    
+    // Deduplicate contributors BEFORE processing contributions
     console.log('🔧 Deduplicating contributors...');
     await deduplicateContributors();
     
-    await insertContributions(contributions);
+    // Now insert contributions with deduplicated contributor IDs
+    await insertContributionsWithDeduplicatedIds(contributions, contributorMap);
     
     // Update last scan metadata
     await updateMetadata('last_scan_commit', commits[0].hash);
@@ -51,6 +56,126 @@ async function initializeRepository() {
     console.error('❌ Error during initialization:', error);
     core.setFailed(error.message);
   }
+}
+
+// New function to handle contributions after deduplication
+async function insertContributionsWithDeduplicatedIds(contributions, originalContributorMap) {
+  if (contributions.length === 0) return;
+  
+  console.log(`🔗 Processing ${contributions.length} contributions with deduplicated IDs...`);
+  
+  // Get the deduplicated contributors from database
+  const { data: dbContributors, error: contributorError } = await supabase
+    .from('contributors')
+    .select('id, canonical_name, github_login, email');
+    
+  if (contributorError) {
+    console.error('Error fetching contributors:', contributorError);
+    throw contributorError;
+  }
+    
+  const { data: dbFiles, error: filesError } = await supabase
+    .from('files')
+    .select('id, canonical_path');
+  
+  if (filesError) {
+    console.error('Error fetching files:', filesError);
+    throw filesError;
+  }
+  
+  console.log(`📊 Found ${dbContributors.length} contributors and ${dbFiles.length} files in database`);
+  
+  // Create enhanced lookup maps for contributors
+  const contributorLookup = new Map();
+  dbContributors.forEach(c => {
+    // Add by email
+    if (c.email) {
+      contributorLookup.set(c.email.toLowerCase(), c.id);
+    }
+    // Add by canonical name
+    contributorLookup.set(c.canonical_name.toLowerCase(), c.id);
+    // Add by github login
+    contributorLookup.set(c.github_login.toLowerCase(), c.id);
+  });
+  
+  const fileLookup = new Map();
+  dbFiles.forEach(f => {
+    fileLookup.set(f.canonical_path, f.id);
+  });
+  
+  // Map contributions to database IDs
+  const mappedContributions = [];
+  let skippedCount = 0;
+  
+  for (const contribution of contributions) {
+    const fileId = fileLookup.get(contribution.file_path);
+    
+    // Try multiple ways to find the contributor ID
+    let contributorId = null;
+    
+    // Try by email first
+    if (contribution.contributor_email) {
+      contributorId = contributorLookup.get(contribution.contributor_email.toLowerCase());
+    }
+    
+    // Try by canonical name if email lookup failed
+    if (!contributorId && contribution.contributor_canonical_name) {
+      contributorId = contributorLookup.get(contribution.contributor_canonical_name.toLowerCase());
+    }
+    
+    // Try by original github login if both above failed
+    if (!contributorId) {
+      const originalContributor = Array.from(originalContributorMap.values())
+        .find(c => c.email === contribution.contributor_email);
+      if (originalContributor && originalContributor.github_login) {
+        contributorId = contributorLookup.get(originalContributor.github_login.toLowerCase());
+      }
+    }
+    
+    if (contributorId && fileId) {
+      mappedContributions.push({
+        contributor_id: contributorId,
+        file_id: fileId,
+        activity_type: contribution.activity_type,
+        activity_id: contribution.activity_id,
+        contribution_date: contribution.contribution_date
+      });
+    } else {
+      skippedCount++;
+      if (skippedCount <= 5) { // Log first few for debugging
+        console.warn(`⚠️ Skipping contribution - Contributor: ${contribution.contributor_email} (ID: ${contributorId}), File: ${contribution.file_path} (ID: ${fileId})`);
+      }
+    }
+  }
+  
+  console.log(`🔗 Mapped ${mappedContributions.length} contributions (skipped ${skippedCount})`);
+  
+  if (mappedContributions.length === 0) {
+    console.warn('⚠️ No contributions to insert after mapping!');
+    return;
+  }
+  
+  // Insert in batches
+  const batchSize = 500;
+  let totalInserted = 0;
+  
+  for (let i = 0; i < mappedContributions.length; i += batchSize) {
+    const batch = mappedContributions.slice(i, i + batchSize);
+    const { data, error } = await supabase
+      .from('contributions')
+      .insert(batch)
+      .select('id');
+    
+    if (error) {
+      console.error('Error inserting contributions batch:', error);
+      // Continue with next batch instead of failing completely
+    } else {
+      totalInserted += batch.length;
+      console.log(`🔗 Inserted contributions batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(mappedContributions.length/batchSize)} (${totalInserted} total)`);
+    }
+  }
+  
+  console.log(`✅ Successfully inserted ${totalInserted} contributions`);
 }
 
 async function processCommit(commit, contributorMap, fileMap, contributions) {
