@@ -2,6 +2,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const git = require('simple-git')();
 const core = require('@actions/core');
+const { deduplicateContributors } = require('./deduplicate-contributors');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -30,6 +31,11 @@ async function initializeRepository() {
     // Insert data into Supabase
     await insertContributors(Array.from(contributorMap.values()));
     await insertFiles(Array.from(fileMap.values()));
+    
+    // Deduplicate contributors before inserting contributions
+    console.log('🔧 Deduplicating contributors...');
+    await deduplicateContributors();
+    
     await insertContributions(contributions);
     
     // Update last scan metadata
@@ -210,7 +216,7 @@ async function insertContributions(contributions) {
   
   console.log(`🔗 Processing ${contributions.length} contributions...`);
   
-  // Get the actual IDs from the database
+  // Get the actual IDs from the database (after deduplication)
   const { data: dbContributors, error: contributorError } = await supabase
     .from('contributors')
     .select('id, canonical_name, github_login, email');
