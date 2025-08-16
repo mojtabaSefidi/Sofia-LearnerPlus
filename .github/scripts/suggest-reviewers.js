@@ -24,18 +24,47 @@ async function suggestReviewers() {
       throw new Error('No pull request found in context');
     }
     
+    // Debug: Check all possible token sources
+    console.log('🔍 Debug: Checking token sources...');
+    const tokenSources = {
+      'process.env.GITHUB_TOKEN': process.env.GITHUB_TOKEN,
+      'process.env.github_token': process.env.github_token,
+      'core.getInput("github-token")': core.getInput('github-token'),
+      'core.getInput("token")': core.getInput('token'),
+      'core.getInput("GITHUB_TOKEN")': core.getInput('GITHUB_TOKEN'),
+    };
+    
+    for (const [source, value] of Object.entries(tokenSources)) {
+      if (value) {
+        console.log(`✅ ${source}: Available (${value.length} chars)`);
+      } else {
+        console.log(`❌ ${source}: Not available`);
+      }
+    }
+    
     // Try multiple ways to get the GitHub token
     let token = process.env.GITHUB_TOKEN || 
                 process.env.github_token || 
                 core.getInput('github-token') ||
-                core.getInput('token');
+                core.getInput('token') ||
+                core.getInput('GITHUB_TOKEN');
     
     if (!token) {
       console.log('⚠️ No GitHub token available, falling back to context-only analysis');
+      console.log('Environment vars containing "token" or "github":');
+      Object.keys(process.env)
+        .filter(key => key.toLowerCase().includes('token') || key.toLowerCase().includes('github'))
+        .forEach(key => {
+          const value = process.env[key];
+          console.log(`  ${key}: ${value ? `${value.substring(0, 4)}... (${value.length} chars)` : 'undefined'}`);
+        });
       return await suggestReviewersWithoutAPI(context, pr);
     }
     
-    console.log('✅ GitHub token found, creating Octokit client...');
+    console.log(`✅ GitHub token found: ${token.substring(0, 4)}... (${token.length} chars)`);
+    
+    // Create Octokit instance (skip user authentication test as it may fail with limited permissions)
+    console.log('🧪 Creating Octokit client...');
     const octokit = github.getOctokit(token);
     
     // Get PR files from GitHub API
