@@ -14,6 +14,8 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
+      repository-projects: read
+      metadata: read
     
     steps:
       - name: Checkout Repository
@@ -37,3 +39,12 @@ jobs:
         run: |
           cd .github
           node scripts/suggest-reviewers.js
+          
+      - name: Output Results
+        if: always()
+        run: |
+          echo "Review analysis completed"
+          if [ -f reviewer-suggestions.md ]; then
+            echo "Reviewer suggestions generated:"
+            cat reviewer-suggestions.md
+          fi
