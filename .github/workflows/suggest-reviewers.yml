@@ -10,6 +10,11 @@ jobs:
   suggest-reviewers:
     runs-on: ubuntu-latest
     
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -28,7 +33,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           cd .github
           node scripts/suggest-reviewers.js
