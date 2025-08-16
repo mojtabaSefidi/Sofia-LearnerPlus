@@ -24,12 +24,14 @@ async function suggestReviewers() {
       throw new Error('No pull request found in context');
     }
     
-    // Get token from environment variable instead of input
+    // Get GitHub token from environment variable
     const token = process.env.GITHUB_TOKEN;
+    
     if (!token) {
       throw new Error('GITHUB_TOKEN environment variable is required');
     }
     
+    console.log('✅ GitHub token found, creating Octokit client...');
     const octokit = github.getOctokit(token);
     
     const { data: prFiles } = await octokit.rest.pulls.listFiles({
