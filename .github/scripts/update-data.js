@@ -71,7 +71,12 @@ async function processNewCommit(commitSha) {
 
 async function processMergedPR(pr) {
   // Get PR files from GitHub API
-  const token = core.getInput('github-token');
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    console.warn('⚠️ No GitHub token available, skipping PR file analysis');
+    return;
+  }
+  
   const octokit = github.getOctokit(token);
   
   const { data: files } = await octokit.rest.pulls.listFiles({
