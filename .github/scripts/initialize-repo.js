@@ -58,7 +58,6 @@ async function initializeRepository() {
   }
 }
 
-// New function to handle contributions after deduplication
 async function insertContributionsWithDeduplicatedIds(contributions, originalContributorMap) {
   if (contributions.length === 0) return;
   
@@ -88,13 +87,10 @@ async function insertContributionsWithDeduplicatedIds(contributions, originalCon
   // Create enhanced lookup maps for contributors
   const contributorLookup = new Map();
   dbContributors.forEach(c => {
-    // Add by email
     if (c.email) {
       contributorLookup.set(c.email.toLowerCase(), c.id);
     }
-    // Add by canonical name
     contributorLookup.set(c.canonical_name.toLowerCase(), c.id);
-    // Add by github login
     contributorLookup.set(c.github_login.toLowerCase(), c.id);
   });
   
@@ -110,20 +106,16 @@ async function insertContributionsWithDeduplicatedIds(contributions, originalCon
   for (const contribution of contributions) {
     const fileId = fileLookup.get(contribution.file_path);
     
-    // Try multiple ways to find the contributor ID
     let contributorId = null;
     
-    // Try by email first
     if (contribution.contributor_email) {
       contributorId = contributorLookup.get(contribution.contributor_email.toLowerCase());
     }
     
-    // Try by canonical name if email lookup failed
     if (!contributorId && contribution.contributor_canonical_name) {
       contributorId = contributorLookup.get(contribution.contributor_canonical_name.toLowerCase());
     }
     
-    // Try by original github login if both above failed
     if (!contributorId) {
       const originalContributor = Array.from(originalContributorMap.values())
         .find(c => c.email === contribution.contributor_email);
@@ -138,11 +130,12 @@ async function insertContributionsWithDeduplicatedIds(contributions, originalCon
         file_id: fileId,
         activity_type: contribution.activity_type,
         activity_id: contribution.activity_id,
-        contribution_date: contribution.contribution_date
+        contribution_date: contribution.contribution_date,
+        lines_modified: contribution.lines_modified || 0
       });
     } else {
       skippedCount++;
-      if (skippedCount <= 5) { // Log first few for debugging
+      if (skippedCount <= 5) {
         console.warn(`⚠️ Skipping contribution - Contributor: ${contribution.contributor_email} (ID: ${contributorId}), File: ${contribution.file_path} (ID: ${fileId})`);
       }
     }
@@ -168,7 +161,6 @@ async function insertContributionsWithDeduplicatedIds(contributions, originalCon
     
     if (error) {
       console.error('Error inserting contributions batch:', error);
-      // Continue with next batch instead of failing completely
     } else {
       totalInserted += batch.length;
       console.log(`🔗 Inserted contributions batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(mappedContributions.length/batchSize)} (${totalInserted} total)`);
@@ -180,9 +172,9 @@ async function insertContributionsWithDeduplicatedIds(contributions, originalCon
 
 async function processCommit(commit, contributorMap, fileMap, contributions) {
   try {
-    // Get commit details with proper format
-    const show = await git.show([commit.hash, '--name-status', '--format=']);
-    const files = parseGitShowOutput(show);
+    // Get commit details with proper format including line changes
+    const show = await git.show([commit.hash, '--name-status', '--numstat', '--format=']);
+    const files = parseGitShowOutputWithLines(show);
     
     // Process contributor
     const contributor = await getOrCreateContributor(commit, contributorMap);
@@ -191,20 +183,61 @@ async function processCommit(commit, contributorMap, fileMap, contributions) {
     for (const fileChange of files) {
       const file = await getOrCreateFile(fileChange, fileMap);
       
-      // Record contribution
+      // Record contribution with lines modified
       contributions.push({
         contributor_email: contributor.email,
         contributor_canonical_name: contributor.canonical_name,
         file_path: file.canonical_path,
         activity_type: 'commit',
         activity_id: commit.hash,
-        contribution_date: new Date(commit.date)
+        contribution_date: new Date(commit.date),
+        lines_modified: fileChange.linesModified || 0
       });
     }
   } catch (error) {
     console.warn(`⚠️ Could not process commit ${commit.hash}: ${error.message}`);
-    // Continue with next commit instead of failing entirely
   }
+}
+
+function parseGitShowOutputWithLines(output) {
+  const lines = output.split('\n').filter(line => line.trim());
+  const files = [];
+  
+  // Parse numstat lines (additions deletions filename)
+  const numstatLines = lines.filter(line => line.match(/^\d+\t\d+\t/) || line.match(/^-\t-\t/));
+  const namestatLines = lines.filter(line => line.match(/^[AMDRT]/));
+  
+  // Combine numstat and name-status data
+  namestatLines.forEach((nameLine, index) => {
+    const parts = nameLine.split('\t');
+    const status = parts[0];
+    let file = parts[1];
+    let oldFile = null;
+    let linesModified = 0;
+    
+    // Handle rename/copy cases
+    if (status.startsWith('R') || status.startsWith('C')) {
+      oldFile = parts[1];
+      file = parts[2];
+    }
+    
+    // Get line changes from numstat
+    if (numstatLines[index]) {
+      const numstatParts = numstatLines[index].split('\t');
+      const additions = numstatParts[0] === '-' ? 0 : parseInt(numstatParts[0]) || 0;
+      const deletions = numstatParts[1] === '-' ? 0 : parseInt(numstatParts[1]) || 0;
+      linesModified = additions + deletions;
+    }
+    
+    files.push({
+      status: status[0],
+      file: file,
+      oldFile: oldFile,
+      linesModified: linesModified
+    });
+  });
+  
+  return files;
 }
 
 async function getOrCreateContributor(commit, contributorMap) {
