@@ -1,6 +1,5 @@
 # Replication Package
-
-This repository contains the necessary data to replicate the information from the study "_The Cost vs. the Benefit of Adding an Extra Code Reviewer to Mitigate Developer Turnover through Reviewer Recommenders_." First, install the dependencies for RelationalGit, as outlined in the [README File](ReplicationPackage/README.md) located in the _ReplicationPackage_ directory.
+This repository contains the necessary data to replicate the information from the study "_The Cost vs. the Benefit of Adding an Extra Code Reviewer to Mitigate Developer Turnover through Reviewer Recommenders_" which was published in ICSE 2026. First, you should install the dependencies for RelationalGit, as outlined in the [README File](ReplicationPackage/README.md) located in the _ReplicationPackage_ directory.
 
 # RelationalGit
 
