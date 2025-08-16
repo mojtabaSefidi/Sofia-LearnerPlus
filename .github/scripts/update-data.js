@@ -47,7 +47,7 @@ async function processPullRequestEvent(context) {
 }
 
 async function processNewCommit(commitSha) {
-  const commit = await git.show([commitSha, '--name-status', '--format=fuller']);
+  const commit = await git.show([commitSha, '--name-status', '--numstat', '--format=fuller']);
   const commitInfo = parseCommitInfo(commit);
   
   // Get or create contributor
@@ -57,13 +57,14 @@ async function processNewCommit(commitSha) {
   for (const fileChange of commitInfo.files) {
     const file = await getOrCreateFile(fileChange.path);
     
-    // Record contribution
+    // Record contribution with lines modified
     await recordContribution({
       contributor_id: contributor.id,
       file_id: file.id,
       activity_type: 'commit',
       activity_id: commitSha,
-      contribution_date: new Date(commitInfo.date)
+      contribution_date: new Date(commitInfo.date),
+      lines_modified: fileChange.linesModified || 0
     });
   }
 }
@@ -85,20 +86,38 @@ async function processMergedPR(pr) {
     pull_number: pr.number
   });
   
+  // Calculate total lines modified in PR
+  const totalLinesModified = files.reduce((total, file) => {
+    return total + (file.additions || 0) + (file.deletions || 0);
+  }, 0);
+  
   // Process each reviewer's contribution to each file
   for (const review of reviews) {
     if (review.user.login !== pr.user.login) { // Exclude PR author
       const reviewer = await getOrCreateContributorByLogin(review.user.login);
       
+      // Record PR review performance
+      await recordPRReview({
+        pr_number: pr.number,
+        reviewer_login: review.user.login,
+        pr_opened_date: new Date(pr.created_at),
+        pr_closed_date: new Date(pr.merged_at || pr.closed_at),
+        lines_modified: totalLinesModified,
+        review_submitted_date: new Date(review.submitted_at)
+      });
+      
       for (const file of files) {
         const fileRecord = await getOrCreateFile(file.filename);
+        const fileLinesModified = (file.additions || 0) + (file.deletions || 0);
         
         await recordContribution({
           contributor_id: reviewer.id,
           file_id: fileRecord.id,
           activity_type: 'review',
           activity_id: pr.number.toString(),
-          contribution_date: new Date(review.submitted_at)
+          contribution_date: new Date(review.submitted_at),
+          lines_modified: fileLinesModified,
+          pr_number: pr.number
         });
       }
     }
@@ -112,8 +131,20 @@ async function processMergedPR(pr) {
       status: 'merged',
       author_login: pr.user.login,
       created_date: new Date(pr.created_at),
-      merged_date: new Date(pr.merged_at)
+      merged_date: new Date(pr.merged_at),
+      lines_modified: totalLinesModified
     });
+}
+
+// New function to record PR review performance
+async function recordPRReview(reviewData) {
+  const { error } = await supabase
+    .from('pr_reviews')
+    .insert(reviewData);
+    
+  if (error && !error.message.includes('duplicate')) {
+    console.warn('Error recording PR review:', error.message);
+  }
 }
 
 async function getOrCreateContributor(authorInfo) {
@@ -198,7 +229,6 @@ async function recordContribution(contribution) {
 }
 
 function parseCommitInfo(commitOutput) {
-  // Parse git show output to extract commit information
   const lines = commitOutput.split('\n');
   const authorLine = lines.find(l => l.startsWith('Author:'));
   const dateLine = lines.find(l => l.startsWith('AuthorDate:'));
@@ -206,19 +236,38 @@ function parseCommitInfo(commitOutput) {
   const files = [];
   let inFilesList = false;
   
+  // Parse both --name-status and --numstat output
+  const numstatLines = [];
+  const namestatLines = [];
+  
   for (const line of lines) {
-    if (line.match(/^[AMD]\t/)) {
-      inFilesList = true;
-      const [status, path] = line.split('\t');
-      files.push({ status, path });
+    if (line.match(/^\d+\t\d+\t/)) {
+      // numstat format: additions deletions filename
+      numstatLines.push(line);
+    } else if (line.match(/^[AMD]\t/)) {
+      // name-status format: status filename
+      namestatLines.push(line);
     }
   }
+  
+  // Combine numstat and name-status data
+  namestatLines.forEach((nameLine, index) => {
+    const [status, path] = nameLine.split('\t');
+    let linesModified = 0;
+    
+    if (numstatLines[index]) {
+      const [additions, deletions] = numstatLines[index].split('\t');
+      linesModified = (parseInt(additions) || 0) + (parseInt(deletions) || 0);
+    }
+    
+    files.push({ status, path, linesModified });
+  });
   
   return {
     author: {
       name: authorLine.split(' <')[0].replace('Author: ', ''),
       email: authorLine.split(' <')[1].replace('>', ''),
-      login: null // We'll try to resolve this later
+      login: null
     },
     date: dateLine.replace('AuthorDate: ', ''),
     files
