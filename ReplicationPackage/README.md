@@ -6,7 +6,7 @@ The overall steps are
 2. Get the Database
 3. Run the Simulations for each research question
 4. Dump the Simulation Data to CSV
-5. Calculate the outcome measures: Expertise, Gini-Workload, FaR, and Reviewer++
+5. Calculate the outcome measures: Expertise, Gini-Workload, File at Risk to Turnover (FaR), and Reviewer++
 
 ## Install Relational Git
 
