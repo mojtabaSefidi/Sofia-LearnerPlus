@@ -55,9 +55,27 @@ async function debugTokenAccess() {
     console.log('\n🧪 Testing token with GitHub API...');
     const octokit = github.getOctokit(token);
     
-    // Try a simple API call
-    const { data: user } = await octokit.rest.users.getAuthenticated();
-    console.log(`✅ Token works! Authenticated as: ${user.login}`);
+    // Try a simple API call that should work with basic permissions
+    try {
+      const { data: user } = await octokit.rest.users.getAuthenticated();
+      console.log(`✅ Token works! Authenticated as: ${user.login}`);
+    } catch (userError) {
+      console.log(`⚠️ User authentication failed (this is often normal): ${userError.message}`);
+      console.log(`🔄 Trying repository-level test instead...`);
+      
+      // Try a repository-level call instead
+      const context = github.context;
+      try {
+        const { data: repo } = await octokit.rest.repos.get({
+          owner: context.repo.owner,
+          repo: context.repo.repo
+        });
+        console.log(`✅ Repository access works! Repo: ${repo.full_name}`);
+      } catch (repoError) {
+        console.log(`❌ Repository access failed: ${repoError.message}`);
+        throw repoError;
+      }
+    }
     
     // Check token permissions
     const context = github.context;
