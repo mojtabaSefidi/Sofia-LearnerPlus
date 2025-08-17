@@ -106,9 +106,7 @@ namespace RelationalGit.Recommendation
 
                 var scoreTotalComments = reviewerExpertise.TotalComments / (double)fileExpertise.TotalComments;
                 var scoreTotalWorkDays = reviewerExpertise.TotalWorkDays / (double)fileExpertise.TotalWorkDays;
-                var scoreRecency = (fileExpertise.RecentWorkDay == reviewerExpertise.RecentWorkDay)
-                    ? 1
-                    : 1 / (fileExpertise.RecentWorkDay - reviewerExpertise.RecentWorkDay).Value.TotalDays;
+                var scoreRecency = 1 / (Math.Abs((reviewerExpertise.RecentWorkDay - fileExpertise.RecentWorkDay).Value.TotalDays) + 1);
 
                 score += scoreTotalComments + scoreTotalWorkDays + scoreRecency;
             }
