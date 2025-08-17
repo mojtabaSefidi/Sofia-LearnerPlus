@@ -146,26 +146,37 @@ async function getLastActivityDatesForPRFiles(contributorLogins, prFilePaths) {
     // Get last review date in PR files
     const { data: lastReviewInFiles } = await supabase
       .from('contributions')
-      .select('contribution_date')
+      .select(`
+        contribution_date,
+        contributors!inner(github_login),
+        files!inner(current_path)
+      `)
       .eq('activity_type', 'review')
       .in('files.current_path', prFilePaths)
       .eq('contributors.github_login', login)
       .order('contribution_date', { ascending: false })
       .limit(1);
 
-    // Get last commit date
+    // Get last commit date (ALL TIME - removed date filter)
     const { data: lastCommit } = await supabase
       .from('contributions')
-      .select('contribution_date')
+      .select(`
+        contribution_date,
+        contributors!inner(github_login)
+      `)
       .eq('activity_type', 'commit')
       .eq('contributors.github_login', login)
       .order('contribution_date', { ascending: false })
       .limit(1);
 
-    // Get last modification in PR files
+    // Get last modification in PR files (ALL TIME - removed date filter)
     const { data: lastModificationInFiles } = await supabase
       .from('contributions')
-      .select('contribution_date')
+      .select(`
+        contribution_date,
+        contributors!inner(github_login),
+        files!inner(current_path)
+      `)
       .in('files.current_path', prFilePaths)
       .eq('contributors.github_login', login)
       .order('contribution_date', { ascending: false })
