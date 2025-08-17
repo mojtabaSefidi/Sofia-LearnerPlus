@@ -53,7 +53,7 @@ async function suggestReviewers() {
     const reviewerMetrics = await calculateDetailedReviewerMetrics(prFiles, pr.user.login);
     
     // Generate comprehensive comment
-    const comment = generateDetailedComment(fileAnalysis, reviewerMetrics, pr.user.login);
+    const comment = generateDetailedComment(fileAnalysis, reviewerMetrics, pr.user.login, prFiles);
     
     // Post comment
     await octokit.rest.issues.createComment({
@@ -314,7 +314,8 @@ function getChangeType(prFile) {
   return 'modify'; // default
 }
 
-function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor) {
+function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFiles) {
+  const filePaths = prFiles.map(f => f.filename);
   let comment = `## 📊 Pull Request Analysis
 
 ### 📁 Files Modified in this PR
