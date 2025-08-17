@@ -77,23 +77,28 @@ async function analyzeFiles(prFiles) {
   const fileAnalysis = [];
   const filePaths = prFiles.map(f => f.filename);
   
+  // Get PR author from context
+  const context = github.context;
+  const prAuthor = context.payload.pull_request.user.login;
+  
   // Get file information and contributor history
   for (const prFile of prFiles) {
     const filePath = prFile.filename;
     const changeType = getChangeType(prFile);
     
-    // Get contributors for this specific file
+    // Get contributors for this specific file - EXCLUDE PR AUTHOR
     const { data: fileContributions } = await supabase
       .from('contributions')
       .select(`
         contributor_id,
         activity_type,
-        contributors!inner(github_login, canonical_name)
+        contributors!inner(github_login, canonical_name),
+        files!inner(current_path, canonical_path)
       `)
-      .eq('files.current_path', filePath)
-      .eq('files.canonical_path', filePath);
+      .or(`files.current_path.eq.${filePath},files.canonical_path.eq.${filePath}`)
+      .neq('contributors.github_login', prAuthor); // Exclude PR author
     
-    // Count unique developers
+    // Count unique developers (excluding author)
     const uniqueDevs = new Set();
     const commitCounts = new Map();
     const reviewCounts = new Map();
@@ -111,7 +116,7 @@ async function analyzeFiles(prFiles) {
       });
     }
     
-    // Find top contributor
+    // Find top contributor (excluding author)
     let topContributor = null;
     let maxContributions = 0;
     
@@ -132,7 +137,7 @@ async function analyzeFiles(prFiles) {
     fileAnalysis.push({
       filename: filePath,
       changeType,
-      developerCount: uniqueDevs.size,
+      developerCount: uniqueDevs.size, // This now excludes the author
       topContributor,
       isNew: changeType === 'create'
     });
@@ -244,7 +249,7 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor) {
     login: metrics.login,
     canonical_name: metrics.canonical_name,
     knows: metrics.knownFiles.size,
-    learns: filePaths.length,
+    learns: filePaths.length - metrics.knownFiles.size, // NEW: Calculate learns
     lCommits: metrics.localCommits,
     lReviews: metrics.localReviews,
     gCommits: metrics.globalCommits,
@@ -341,22 +346,7 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor) {
     }
   });
   
-  // Add abandoned and hoarded files sections
-  if (abandonedFiles.length > 0) {
-    comment += `\n#### ⚠️ Abandoned Files (Nobody knows)\n`;
-    abandonedFiles.forEach(file => {
-      comment += `- \`${file}\`\n`;
-    });
-  }
-  
-  if (hoardedFiles.length > 0) {
-    comment += `\n#### 🔒 Hoarded Files (Single expert)\n`;
-    hoardedFiles.forEach(file => {
-      comment += `- \`${file.filename}\` - Only known by @${file.owner}\n`;
-    });
-  }
-  
-  // Add enhanced reviewer suggestions
+  // Add enhanced reviewer suggestions with LEARNS column
   if (reviewerMetrics.length === 0) {
     comment += `\n### 👥 Reviewer Suggestions
 
@@ -367,19 +357,20 @@ No developers found with prior experience on these files. Consider assigning rev
   } else {
     comment += `\n### 👥 Reviewer Candidates (Q3 2024)
 
-| Developer | Knows | WS% | PR% | RTM% | ΔGini | AvgTime(h) | AvgSize | L/h | LastRev | LastRevPR |
-|-----------|-------|-----|-----|------|-------|------------|---------|-----|---------|----------|
+| Developer | Knows | Learns | WS% | PR% | RTM% | ΔGini | AvgTime(h) | AvgSize | L/h | LastRev | LastRevPR |
+|-----------|-------|--------|-----|-----|------|-------|------------|---------|-----|---------|----------|
 `;
     
     reviewerMetrics.forEach(metrics => {
       const formatDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('en-US', {month: 'short', day: 'numeric'}) : 'N/A';
       const formatNumber = (num, decimals = 1) => typeof num === 'number' ? num.toFixed(decimals) : '0.0';
       
-      comment += `| @${metrics.login} | ${metrics.knows} | ${formatNumber(metrics.workloadShare)} | ${formatNumber(metrics.percentileRank)} | ${formatNumber(metrics.relativeToMean)} | ${formatNumber(metrics.giniWorkload)} | ${formatNumber(metrics.avgReviewTimeHours)} | ${Math.round(metrics.avgReviewSizeLines)} | ${formatNumber(metrics.linesPerHour)} | ${formatDate(metrics.lastReviewDate)} | ${formatDate(metrics.lastReviewInPRFiles)} |\n`;
+      comment += `| @${metrics.login} | ${metrics.knows} | ${metrics.learns} | ${formatNumber(metrics.workloadShare)} | ${formatNumber(metrics.percentileRank)} | ${formatNumber(metrics.relativeToMean)} | ${formatNumber(metrics.giniWorkload)} | ${formatNumber(metrics.avgReviewTimeHours)} | ${Math.round(metrics.avgReviewSizeLines)} | ${formatNumber(metrics.linesPerHour)} | ${formatDate(metrics.lastReviewDate)} | ${formatDate(metrics.lastReviewInPRFiles)} |\n`;
     });
     
     comment += `\n**Enhanced Legend:**
 - **Knows**: Files in this PR the candidate has worked on before
+- **Learns**: Files in this PR the candidate hasn't worked on before (${filePaths.length} total files - Knows)
 - **WS%**: Workload Share - percentage of total reviews in last quarter
 - **PR%**: Percentile Rank - percentile position in team workload distribution  
 - **RTM%**: Relative To Mean - percentage difference from team average workload
@@ -405,8 +396,8 @@ No developers found with prior experience on these files. Consider assigning rev
     });
 
     comment += `\n**Timeline Legend:**
-- **LastCommit**: Date of last commit (any file)
-- **LastModPR**: Date of last modification in any of this PR's files
+- **LastCommit**: Date of last commit (any file, all time)
+- **LastModPR**: Date of last modification in any of this PR's files (all time)
 - **L-Commits**: Local commits on known files (all time)
 - **L-Reviews**: Local reviews on known files (all time)
 - **G-Commits**: Global commits in the last year
