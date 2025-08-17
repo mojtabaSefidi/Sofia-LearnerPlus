@@ -153,20 +153,45 @@ async function recordPRReview(reviewData) {
 }
 
 async function getOrCreateContributor(authorInfo) {
+  // First try to find by GitHub login
+  let githubLogin = authorInfo.login;
+  
+  // If no login provided, try to extract from email
+  if (!githubLogin && authorInfo.email && authorInfo.email.includes('@users.noreply.github.com')) {
+    const match = authorInfo.email.match(/(\d+\+)?([^@]+)@users\.noreply\.github\.com/);
+    if (match && match[2]) {
+      githubLogin = match[2];
+    }
+  }
+  
+  // Fallback to normalized name
+  if (!githubLogin) {
+    githubLogin = authorInfo.name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+  }
+  
   const { data: existing } = await supabase
+    .from('contributors')
+    .select('*')
+    .eq('github_login', githubLogin) // Search by GitHub login first
+    .single();
+    
+  if (existing) return existing;
+  
+  // Try to find by email if not found by login
+  const { data: existingByEmail } = await supabase
     .from('contributors')
     .select('*')
     .eq('email', authorInfo.email)
     .single();
     
-  if (existing) return existing;
+  if (existingByEmail) return existingByEmail;
   
   // Create new contributor
   const { data: newContributor, error } = await supabase
     .from('contributors')
     .insert({
-      github_login: authorInfo.login || authorInfo.name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase(),
-      canonical_name: authorInfo.name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase(),
+      github_login: githubLogin,
+      canonical_name: githubLogin, // Use GitHub login as canonical name
       email: authorInfo.email
     })
     .select()
