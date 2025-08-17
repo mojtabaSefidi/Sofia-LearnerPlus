@@ -24,46 +24,16 @@ async function suggestReviewers() {
       throw new Error('No pull request found in context');
     }
     
-    // Debug: Check all possible token sources
-    console.log('🔍 Debug: Checking token sources...');
-    const tokenSources = {
-      'process.env.GITHUB_TOKEN': process.env.GITHUB_TOKEN,
-      'process.env.github_token': process.env.github_token,
-      'core.getInput("github-token")': core.getInput('github-token'),
-      'core.getInput("token")': core.getInput('token'),
-      'core.getInput("GITHUB_TOKEN")': core.getInput('GITHUB_TOKEN'),
-    };
-    
-    for (const [source, value] of Object.entries(tokenSources)) {
-      if (value) {
-        console.log(`✅ ${source}: Available (${value.length} chars)`);
-      } else {
-        console.log(`❌ ${source}: Not available`);
-      }
-    }
-    
-    // Try multiple ways to get the GitHub token
-    let token = process.env.GITHUB_TOKEN || 
-                process.env.github_token || 
-                core.getInput('github-token') ||
-                core.getInput('token') ||
-                core.getInput('GITHUB_TOKEN');
+    // Get GitHub token (should be available from environment)
+    const token = process.env.GITHUB_TOKEN;
     
     if (!token) {
-      console.log('⚠️ No GitHub token available, falling back to context-only analysis');
-      console.log('Environment vars containing "token" or "github":');
-      Object.keys(process.env)
-        .filter(key => key.toLowerCase().includes('token') || key.toLowerCase().includes('github'))
-        .forEach(key => {
-          const value = process.env[key];
-          console.log(`  ${key}: ${value ? `${value.substring(0, 4)}... (${value.length} chars)` : 'undefined'}`);
-        });
-      return await suggestReviewersWithoutAPI(context, pr);
+      throw new Error('GitHub token not available');
     }
     
     console.log(`✅ GitHub token found: ${token.substring(0, 4)}... (${token.length} chars)`);
     
-    // Create Octokit instance (skip user authentication test as it may fail with limited permissions)
+    // Create Octokit instance
     console.log('🧪 Creating Octokit client...');
     const octokit = github.getOctokit(token);
     
@@ -101,156 +71,6 @@ async function suggestReviewers() {
   }
 }
 
-// Fallback function that works without GitHub API access
-async function suggestReviewersWithoutAPI(context, pr) {
-  console.log('🔄 Running analysis without GitHub API access...');
-  
-  try {
-    // We can't get the actual PR files without API access,
-    // but we can still provide general reviewer suggestions
-    // based on historical data and the PR author
-    
-    const reviewerMetrics = await calculateReviewerMetricsWithoutFiles(pr.user.login);
-    
-    const fallbackComment = generateFallbackComment(reviewerMetrics, pr.user.login);
-    
-    // We can't post the comment without API access either,
-    // so we'll output it as an action output
-    core.setOutput('reviewer-suggestions', fallbackComment);
-    core.setOutput('top-reviewers', JSON.stringify(reviewerMetrics.slice(0, 3).map(m => m.login)));
-    
-    console.log('📊 Reviewer analysis completed (no API access)');
-    console.log('Top suggested reviewers:', reviewerMetrics.slice(0, 3).map(m => `@${m.login}`).join(', '));
-    
-  } catch (error) {
-    console.error('❌ Error in fallback analysis:', error);
-    throw error;
-  }
-}
-
-async function calculateReviewerMetricsWithoutFiles(prAuthor) {
-  console.log('📈 Calculating reviewer metrics based on historical data...');
-  
-  const oneYearAgo = new Date();
-  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-  
-  // Get all contributors who have been active in the last year (excluding PR author)
-  const { data: activeContributors } = await supabase
-    .from('contributions')
-    .select(`
-      contributor_id,
-      activity_type,
-      contribution_date,
-      lines_modified,
-      contributors!inner(github_login, canonical_name)
-    `)
-    .gte('contribution_date', oneYearAgo.toISOString())
-    .neq('contributors.github_login', prAuthor);
-  
-  if (!activeContributors) {
-    return [];
-  }
-  
-  // Process metrics by contributor
-  const contributorMetrics = new Map();
-  
-  activeContributors.forEach(contrib => {
-    const login = contrib.contributors.github_login;
-    const date = new Date(contrib.contribution_date);
-    const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
-    
-    if (!contributorMetrics.has(login)) {
-      contributorMetrics.set(login, {
-        login,
-        canonical_name: contrib.contributors.canonical_name,
-        globalCommits: 0,
-        globalReviews: 0,
-        activeMonths: new Set(),
-        totalLinesModified: 0
-      });
-    }
-    
-    const metrics = contributorMetrics.get(login);
-    metrics.activeMonths.add(monthKey);
-    metrics.totalLinesModified += contrib.lines_modified || 0;
-    
-    if (contrib.activity_type === 'commit') {
-      metrics.globalCommits++;
-    } else if (contrib.activity_type === 'review') {
-      metrics.globalReviews++;
-    }
-  });
-  
-  // Convert to final metrics array
-  const finalMetrics = Array.from(contributorMetrics.values()).map(metrics => ({
-    login: metrics.login,
-    canonical_name: metrics.canonical_name,
-    gCommits: metrics.globalCommits,
-    gReviews: metrics.globalReviews,
-    aMonths: metrics.activeMonths.size,
-    totalLines: metrics.totalLinesModified
-  }));
-  
-  // Sort by review activity, then by commit activity
-  finalMetrics.sort((a, b) => {
-    if (b.gReviews !== a.gReviews) {
-      return b.gReviews - a.gReviews;
-    }
-    return b.gCommits - a.gCommits;
-  });
-  
-  return finalMetrics.slice(0, 10); // Top 10 candidates
-}
-
-function generateFallbackComment(reviewerMetrics, prAuthor) {
-  let comment = `## 📊 Pull Request Analysis (Limited Mode)
-
-> ⚠️ **Note**: This analysis is running in limited mode due to GitHub API restrictions. File-specific analysis is not available.
-
-### 👥 Active Reviewer Candidates (Last Year)
-
-`;
-
-  if (reviewerMetrics.length === 0) {
-    comment += `No active reviewers found in the database. Consider:
-- Initializing the repository analysis system
-- Assigning reviewers based on team responsibilities
-- Using code ownership files (CODEOWNERS)`;
-  } else {
-    comment += `| Developer | Reviews | Commits | Active Months | Total Lines |
-|-----------|---------|---------|---------------|-------------|
-`;
-    
-    reviewerMetrics.forEach(metrics => {
-      comment += `| @${metrics.login} | ${metrics.gReviews} | ${metrics.gCommits} | ${metrics.aMonths} | ${metrics.totalLines.toLocaleString()} |\n`;
-    });
-    
-    comment += `\n**Legend:**
-- **Reviews**: Number of PR reviews in the last year
-- **Commits**: Number of commits in the last year  
-- **Active Months**: Number of months with activity in the last year
-- **Total Lines**: Total lines modified (commits + reviews) in the last year
-
-### 🎯 Top Recommendations
-
-Based on recent activity, consider assigning:
-`;
-    
-    const topThree = reviewerMetrics.slice(0, 3);
-    topThree.forEach((metrics, index) => {
-      comment += `${index + 1}. **@${metrics.login}** - ${metrics.gReviews} reviews, ${metrics.aMonths} active months\n`;
-    });
-  }
-  
-  comment += `\n---
-*Limited analysis mode: For full file-specific analysis, ensure GitHub token permissions are properly configured.*
-
-*Generated for PR by @${prAuthor}*`;
-  
-  return comment;
-}
-
-// Keep all the existing functions for when API access is available
 async function analyzeFiles(prFiles) {
   console.log('📊 Analyzing files in detail...');
   
