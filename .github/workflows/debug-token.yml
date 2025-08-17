@@ -3,8 +3,16 @@ name: Debug GitHub Token Access
 
 on:
   workflow_dispatch:
-  pull_request:
-    types: [opened]
+    inputs:
+      test_scope:
+        description: 'Test scope (basic, pr, or full)'
+        required: false
+        default: 'basic'
+        type: choice
+        options:
+          - basic
+          - pr
+          - full
 
 jobs:
   debug-token:
