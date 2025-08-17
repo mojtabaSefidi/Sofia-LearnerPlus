@@ -1,4 +1,5 @@
 // .github/scripts/initialize-repo.js
+const github = require('@actions/github');
 const { createClient } = require('@supabase/supabase-js');
 const git = require('simple-git')();
 const core = require('@actions/core');
@@ -245,21 +246,26 @@ async function getOrCreateContributor(commit, contributorMap) {
   const email = commit.author_email;
   const name = commit.author_name;
   
-  // Try to get GitHub login from email or commit info
+  // Try to get GitHub login from various sources
   let githubLogin = await getGitHubLoginFromCommit(commit);
   
-  // If we can't find a GitHub login, use normalized name as fallback
-  if (!githubLogin) {
-    githubLogin = normalizeName(name);
+  // If we still don't have a GitHub login, try GitHub API
+  if (!githubLogin && process.env.GITHUB_TOKEN) {
+    githubLogin = await getGitHubLoginFromAPI(email, name);
   }
   
-  // Use GitHub login as primary key for deduplication instead of email
+  // If we still can't find it, use email prefix or normalized name
+  if (!githubLogin) {
+    githubLogin = extractUsernameFromEmail(email) || normalizeName(name);
+  }
+  
+  // Use GitHub login as primary key
   let contributor = contributorMap.get(githubLogin);
   
   if (!contributor) {
     contributor = {
       github_login: githubLogin,
-      canonical_name: githubLogin, // Use github_login instead of normalized name
+      canonical_name: githubLogin, // Use github_login as canonical name
       email: email
     };
     contributorMap.set(githubLogin, contributor);
@@ -268,30 +274,108 @@ async function getOrCreateContributor(commit, contributorMap) {
   return contributor;
 }
 
-// NEW function to extract GitHub login from commit
+// Enhanced function to get GitHub login from commit
 async function getGitHubLoginFromCommit(commit) {
   try {
-    // Try to get GitHub login from commit message or other sources
-    const commitDetails = await git.show([commit.hash, '--format=%aN%n%aE%n%cN%n%cE']);
-    
-    // Check if email contains GitHub username pattern
+    // Method 1: Extract from GitHub noreply email
     if (commit.author_email && commit.author_email.includes('@users.noreply.github.com')) {
-      const match = commit.author_email.match(/(\d+\+)?([^@]+)@users\.noreply\.github\.com/);
-      if (match && match[2]) {
-        return match[2];
+      const match = commit.author_email.match(/(?:\d+\+)?([^@+]+)@users\.noreply\.github\.com/);
+      if (match && match[1]) {
+        return match[1];
       }
     }
     
-    // Try to get from git config
-    const config = await git.listConfig();
-    const userLogin = config.all['user.login'];
-    if (userLogin) return userLogin;
+    // Method 2: Check if email domain suggests a GitHub username pattern
+    if (commit.author_email) {
+      const emailMatch = commit.author_email.match(/^([a-zA-Z0-9\-_]+)@/);
+      if (emailMatch && emailMatch[1] && !commit.author_email.includes('.')) {
+        // Simple email like "username@domain.com" might be GitHub username
+        return emailMatch[1];
+      }
+    }
     
-    // Fallback: use normalized name
-    return normalizeName(commit.author_name);
+    // Method 3: Try to get from git config (if available)
+    try {
+      const config = await git.listConfig();
+      const userLogin = config.all['user.login'];
+      if (userLogin) return userLogin;
+    } catch (error) {
+      // Ignore git config errors
+    }
+    
+    return null;
   } catch (error) {
-    return normalizeName(commit.author_name);
+    return null;
   }
+}
+
+// NEW: Get GitHub username from GitHub API
+async function getGitHubLoginFromAPI(email, name) {
+  if (!process.env.GITHUB_TOKEN) return null;
+  
+  try {
+    const octokit = github.getOctokit(process.env.GITHUB_TOKEN);
+    
+    // Search for users by email (this requires special permissions)
+    try {
+      const { data } = await octokit.rest.search.users({
+        q: `${email} in:email`,
+        per_page: 1
+      });
+      
+      if (data.items && data.items.length > 0) {
+        return data.items[0].login;
+      }
+    } catch (emailSearchError) {
+      // Email search might not be available, try name search
+      console.log('Email search not available, trying name search...');
+    }
+    
+    // Fallback: Search by name (less reliable)
+    try {
+      const { data } = await octokit.rest.search.users({
+        q: `${name} in:fullname`,
+        per_page: 5
+      });
+      
+      // This is less reliable, you might want to add additional validation
+      if (data.items && data.items.length > 0) {
+        console.log(`⚠️ Found potential GitHub user for ${name}: ${data.items[0].login} (verify manually)`);
+        return data.items[0].login;
+      }
+    } catch (nameSearchError) {
+      console.log('Name search also failed');
+    }
+    
+  } catch (error) {
+    console.log(`Could not resolve GitHub username for ${email}: ${error.message}`);
+  }
+  
+  return null;
+}
+
+// NEW: Extract username from email patterns
+function extractUsernameFromEmail(email) {
+  if (!email) return null;
+  
+  // Common patterns where email prefix might be GitHub username
+  const commonDomains = ['gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com'];
+  const emailParts = email.toLowerCase().split('@');
+  
+  if (emailParts.length === 2) {
+    const [localPart, domain] = emailParts;
+    
+    // If it's a common personal email domain and local part looks like a username
+    if (commonDomains.includes(domain) && localPart.match(/^[a-zA-Z0-9\-_]+$/)) {
+      // Remove common non-username patterns
+      const cleaned = localPart.replace(/\.(work|dev|code|git)$/, '');
+      if (cleaned.length >= 3 && cleaned.length <= 39) { // GitHub username constraints
+        return cleaned;
+      }
+    }
+  }
+  
+  return null;
 }
 
 async function getOrCreateFile(fileChange, fileMap) {
