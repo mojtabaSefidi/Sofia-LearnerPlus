@@ -240,24 +240,58 @@ function parseGitShowOutputWithLines(output) {
   return files;
 }
 
+// UPDATE in initialize-repo.js - Replace getOrCreateContributor function:
 async function getOrCreateContributor(commit, contributorMap) {
   const email = commit.author_email;
   const name = commit.author_name;
-  const normalizedName = normalizeName(name);
   
-  // Use email as primary key for deduplication
-  let contributor = contributorMap.get(email);
+  // Try to get GitHub login from email or commit info
+  let githubLogin = await getGitHubLoginFromCommit(commit);
+  
+  // If we can't find a GitHub login, use normalized name as fallback
+  if (!githubLogin) {
+    githubLogin = normalizeName(name);
+  }
+  
+  // Use GitHub login as primary key for deduplication instead of email
+  let contributor = contributorMap.get(githubLogin);
   
   if (!contributor) {
     contributor = {
-      github_login: await getGitHubLogin(email, name),
-      canonical_name: normalizedName,
+      github_login: githubLogin,
+      canonical_name: githubLogin, // Use github_login instead of normalized name
       email: email
     };
-    contributorMap.set(email, contributor);
+    contributorMap.set(githubLogin, contributor);
   }
   
   return contributor;
+}
+
+// NEW function to extract GitHub login from commit
+async function getGitHubLoginFromCommit(commit) {
+  try {
+    // Try to get GitHub login from commit message or other sources
+    const commitDetails = await git.show([commit.hash, '--format=%aN%n%aE%n%cN%n%cE']);
+    
+    // Check if email contains GitHub username pattern
+    if (commit.author_email && commit.author_email.includes('@users.noreply.github.com')) {
+      const match = commit.author_email.match(/(\d+\+)?([^@]+)@users\.noreply\.github\.com/);
+      if (match && match[2]) {
+        return match[2];
+      }
+    }
+    
+    // Try to get from git config
+    const config = await git.listConfig();
+    const userLogin = config.all['user.login'];
+    if (userLogin) return userLogin;
+    
+    // Fallback: use normalized name
+    return normalizeName(commit.author_name);
+  } catch (error) {
+    return normalizeName(commit.author_name);
+  }
 }
 
 async function getOrCreateFile(fileChange, fileMap) {
