@@ -203,77 +203,62 @@ async function insertPRReview(prReviewData) {
   }
 }
 
-async function processPRContributions(pr, octokit, context) {
-  const contributions = [];
+async function processPullRequests() {
+  if (!process.env.GITHUB_TOKEN) {
+    console.log('⚠️ No GITHUB_TOKEN provided, skipping PR processing');
+    return [];
+  }
+
+  console.log('🔄 Processing pull requests...');
   
   try {
-    // Get PR reviews
-    const { data: reviews } = await octokit.rest.pulls.listReviews({
-      owner: context.repo.owner,
-      repo: context.repo.repo,
-      pull_number: pr.number
-    });
+    const octokit = github.getOctokit(process.env.GITHUB_TOKEN);
+    const context = github.context;
     
-    // Get PR files to determine what files were reviewed/modified
-    const { data: files } = await octokit.rest.pulls.listFiles({
-      owner: context.repo.owner,
-      repo: context.repo.repo,
-      pull_number: pr.number
-    });
+    // Get all PRs (same as before)
+    const allPRs = [];
+    let page = 1;
+    const perPage = 100;
     
-    // Calculate total lines modified for this PR
-    const totalLinesModified = files.reduce((total, file) => {
-      return total + (file.additions || 0) + (file.deletions || 0);
-    }, 0);
-    
-    // Always record PR data (even without reviews)
-    const prData = {
-      pr_number: pr.number,
-      author_login: pr.user.login,
-      pr_opened_date: new Date(pr.created_at),
-      pr_closed_date: pr.closed_at ? new Date(pr.closed_at) : null,
-      lines_modified: totalLinesModified,
-      reviewer_login: null, // Will be set if there are reviews
-      review_submitted_date: null
-    };
-    
-    if (reviews.length === 0) {
-      // No reviews - record just the PR data with null reviewer
-      await insertPRReview({ ...prData, reviewer_login: 'no-reviewer' });
-      console.log(`📋 Recorded PR #${pr.number} (no reviews) by ${pr.user.login}`);
-    } else {
-      // Process reviews - record one entry per reviewer
-      for (const review of reviews) {
-        if (review.user && review.user.login !== pr.user.login) { // Don't count self-reviews
-          await insertPRReview({
-            ...prData,
-            reviewer_login: review.user.login,
-            review_submitted_date: new Date(review.submitted_at)
-          });
-        }
-      }
-      console.log(`📋 Processed PR #${pr.number}: ${reviews.length} reviews, ${files.length} files`);
-    }
-    
-    // Process file-level contributions for activity tracking
-    for (const file of files) {
-      contributions.push({
-        contributor_login: pr.user.login,
-        file_path: file.filename,
-        activity_type: 'pull_request',
-        activity_id: pr.number.toString(),
-        contribution_date: new Date(pr.created_at),
-        lines_modified: (file.additions || 0) + (file.deletions || 0),
-        pr_number: pr.number
+    while (true) {
+      const { data: prs } = await octokit.rest.pulls.list({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        state: 'all',
+        per_page: perPage,
+        page: page,
+        sort: 'created',
+        direction: 'asc'
       });
+      
+      if (prs.length === 0) break;
+      
+      allPRs.push(...prs);
+      console.log(`📄 Fetched ${prs.length} PRs (page ${page})`);
+      page++;
     }
+    
+    console.log(`📊 Found ${allPRs.length} total pull requests`);
+    
+    // Insert PRs into pull_requests table
+    await insertPullRequests(allPRs);
+    
+    // Process PR contributions (both file changes AND reviews go into contributions table)
+    const prContributions = [];
+    for (const pr of allPRs) {
+      const contributions = await processPRContributions(pr, octokit, context);
+      prContributions.push(...contributions);
+    }
+    
+    return prContributions;
     
   } catch (error) {
-    console.warn(`⚠️ Could not process PR #${pr.number}: ${error.message}`);
+    console.error('❌ Error processing pull requests:', error);
+    throw error;
   }
-  
-  return contributions;
 }
+
+
 
 async function insertContributionsWithDeduplicatedIds(contributions, originalContributorMap) {
   if (contributions.length === 0) return;
