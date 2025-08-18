@@ -29,6 +29,32 @@ async function initializeRepository() {
       await processCommit(commit, contributorMap, fileMap, contributions);
     }
     
+    // Process pull requests and their contributions
+    console.log('🔄 Starting pull request processing...');
+    const prContributions = await processPullRequests();
+    
+    // Add PR contributors to contributor map
+    for (const prContrib of prContributions) {
+      if (!contributorMap.has(prContrib.contributor_login)) {
+        contributorMap.set(prContrib.contributor_login, {
+          github_login: prContrib.contributor_login,
+          canonical_name: prContrib.contributor_login,
+          email: null // We don't have email from PR API
+        });
+      }
+      
+      // Add file to file map if not exists
+      if (!fileMap.has(prContrib.file_path)) {
+        fileMap.set(prContrib.file_path, {
+          canonical_path: prContrib.file_path,
+          current_path: prContrib.file_path
+        });
+      }
+    }
+    
+    // Combine commit and PR contributions
+    contributions.push(...prContributions);
+    
     // Insert files first
     await insertFiles(Array.from(fileMap.values()));
     
@@ -49,12 +75,148 @@ async function initializeRepository() {
     console.log(`📈 Statistics:
     - Contributors: ${contributorMap.size}
     - Files: ${fileMap.size}  
-    - Contributions: ${contributions.length}`);
+    - Contributions: ${contributions.length}
+    - PR Contributions: ${prContributions.length}`);
     
   } catch (error) {
     console.error('❌ Error during initialization:', error);
     core.setFailed(error.message);
   }
+}
+
+async function processPullRequests() {
+  if (!process.env.GITHUB_TOKEN) {
+    console.log('⚠️ No GITHUB_TOKEN provided, skipping PR processing');
+    return [];
+  }
+
+  console.log('🔄 Processing pull requests...');
+  
+  try {
+    const octokit = github.getOctokit(process.env.GITHUB_TOKEN);
+    const context = github.context;
+    
+    // Get all PRs (open, closed, merged)
+    const allPRs = [];
+    let page = 1;
+    const perPage = 100;
+    
+    while (true) {
+      const { data: prs } = await octokit.rest.pulls.list({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        state: 'all', // Get all PRs regardless of state
+        per_page: perPage,
+        page: page,
+        sort: 'created',
+        direction: 'asc'
+      });
+      
+      if (prs.length === 0) break;
+      
+      allPRs.push(...prs);
+      console.log(`📄 Fetched ${prs.length} PRs (page ${page})`);
+      page++;
+    }
+    
+    console.log(`📊 Found ${allPRs.length} total pull requests`);
+    
+    // Insert PRs into database
+    await insertPullRequests(allPRs);
+    
+    // Process PR contributions (reviews and comments)
+    const prContributions = [];
+    for (const pr of allPRs) {
+      const contributions = await processPRContributions(pr, octokit, context);
+      prContributions.push(...contributions);
+    }
+    
+    return prContributions;
+    
+  } catch (error) {
+    console.error('❌ Error processing pull requests:', error);
+    throw error;
+  }
+}
+
+async function insertPullRequests(prs) {
+  if (prs.length === 0) return;
+  
+  console.log(`📝 Inserting ${prs.length} pull requests...`);
+  
+  const prData = prs.map(pr => ({
+    pr_number: pr.number,
+    status: pr.merged_at ? 'merged' : pr.state,
+    author_login: pr.user.login,
+    created_date: new Date(pr.created_at),
+    merged_date: pr.merged_at ? new Date(pr.merged_at) : null,
+    closed_date: pr.closed_at ? new Date(pr.closed_at) : null
+  }));
+  
+  const batchSize = 50;
+  let totalInserted = 0;
+  
+  for (let i = 0; i < prData.length; i += batchSize) {
+    const batch = prData.slice(i, i + batchSize);
+    
+    const { error } = await supabase
+      .from('pull_requests')
+      .upsert(batch, { onConflict: 'pr_number' });
+    
+    if (error) {
+      console.error('Error inserting PRs batch:', error);
+      throw error;
+    }
+    
+    totalInserted += batch.length;
+    console.log(`📝 Inserted PR batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(prData.length/batchSize)} (${totalInserted} total)`);
+  }
+  
+  console.log(`✅ Successfully inserted ${totalInserted} pull requests`);
+}
+
+async function processPRContributions(pr, octokit, context) {
+  const contributions = [];
+  
+  try {
+    // Get PR reviews
+    const { data: reviews } = await octokit.rest.pulls.listReviews({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      pull_number: pr.number
+    });
+    
+    // Get PR files to determine what files were reviewed
+    const { data: files } = await octokit.rest.pulls.listFiles({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      pull_number: pr.number
+    });
+    
+    // Process reviews
+    for (const review of reviews) {
+      if (review.user && review.user.login !== pr.user.login) { // Don't count self-reviews
+        // For each file in the PR, record a review contribution
+        for (const file of files) {
+          contributions.push({
+            contributor_login: review.user.login,
+            file_path: file.filename,
+            activity_type: 'review',
+            activity_id: pr.number.toString(),
+            contribution_date: new Date(review.submitted_at),
+            lines_modified: 0 // Reviews don't modify lines
+          });
+        }
+      }
+    }
+    
+    console.log(`📋 Processed PR #${pr.number}: ${reviews.length} reviews, ${files.length} files`);
+    
+  } catch (error) {
+    console.warn(`⚠️ Could not process PR #${pr.number}: ${error.message}`);
+  }
+  
+  return contributions;
 }
 
 async function insertContributionsWithDeduplicatedIds(contributions, originalContributorMap) {
@@ -107,7 +269,12 @@ async function insertContributionsWithDeduplicatedIds(contributions, originalCon
     
     let contributorId = null;
     
-    if (contribution.contributor_email) {
+    // Handle PR contributions (which use contributor_login instead of email)
+    if (contribution.contributor_login) {
+      contributorId = contributorLookup.get(contribution.contributor_login.toLowerCase());
+    }
+    // Handle commit contributions
+    else if (contribution.contributor_email) {
       contributorId = contributorLookup.get(contribution.contributor_email.toLowerCase());
     }
     
@@ -117,7 +284,7 @@ async function insertContributionsWithDeduplicatedIds(contributions, originalCon
     
     if (!contributorId) {
       const originalContributor = Array.from(originalContributorMap.values())
-        .find(c => c.email === contribution.contributor_email);
+        .find(c => c.email === contribution.contributor_email || c.github_login === contribution.contributor_login);
       if (originalContributor && originalContributor.github_login) {
         contributorId = contributorLookup.get(originalContributor.github_login.toLowerCase());
       }
@@ -130,12 +297,14 @@ async function insertContributionsWithDeduplicatedIds(contributions, originalCon
         activity_type: contribution.activity_type,
         activity_id: contribution.activity_id,
         contribution_date: contribution.contribution_date,
-        lines_modified: contribution.lines_modified || 0
+        lines_added: contribution.activity_type === 'commit' ? Math.floor((contribution.lines_modified || 0) / 2) : 0,
+        lines_deleted: contribution.activity_type === 'commit' ? Math.ceil((contribution.lines_modified || 0) / 2) : 0
       });
     } else {
       skippedCount++;
-      if (skippedCount <= 5) {
-        console.warn(`⚠️ Skipping contribution - Contributor: ${contribution.contributor_email} (ID: ${contributorId}), File: ${contribution.file_path} (ID: ${fileId})`);
+      if (skippedCount <= 10) {
+        const identifier = contribution.contributor_email || contribution.contributor_login || 'unknown';
+        console.warn(`⚠️ Skipping contribution - Contributor: ${identifier} (ID: ${contributorId}), File: ${contribution.file_path} (ID: ${fileId})`);
       }
     }
   }
