@@ -15,11 +15,12 @@ const CONTRIBUTOR_MERGE_RULES = [
     identifiers: [
       { github_login: 'ehsanmirsaeedi' },
       { github_login: 'ehsan' },
+      { github_login: 'mirsaeedi' },
       { email: 'mirsaeedi@outlook.com' },
       { email: 'ehsan@dacunha.encs.concordia.ca' }
     ],
     preferredProfile: {
-      github_login: 'ehsanmirsaeedi',
+      github_login: 'mirsaeedi',
       canonical_name: 'ehsanmirsaeedi',
       email: 'mirsaeedi@outlook.com'
     }
@@ -34,7 +35,7 @@ const CONTRIBUTOR_MERGE_RULES = [
       { email: '54951311+fahimeh1368@users.noreply.github.com' }
     ],
     preferredProfile: {
-      github_login: 'fahimehhajari',
+      github_login: 'fahimeh1368',
       canonical_name: 'fahimehhajari',
       email: 'fahime.hajari@gmail.com'
     }
@@ -49,7 +50,7 @@ const CONTRIBUTOR_MERGE_RULES = [
       { email: 'samanemalmir73@gmail.com' }
     ],
     preferredProfile: {
-      github_login: 'samanehmalmir',
+      github_login: 'saman9452',
       canonical_name: 'samanehmalmir',
       email: 'samanemalmir73@gmail.com'
     }
