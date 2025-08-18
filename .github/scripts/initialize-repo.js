@@ -150,7 +150,8 @@ async function insertPullRequests(prs) {
     author_login: pr.user.login,
     created_date: new Date(pr.created_at),
     merged_date: pr.merged_at ? new Date(pr.merged_at) : null,
-    closed_date: pr.closed_at ? new Date(pr.closed_at) : null
+    closed_date: pr.closed_at ? new Date(pr.closed_at) : null,
+    lines_modified: 0
   }));
   
   const batchSize = 50;
@@ -298,7 +299,9 @@ async function insertContributionsWithDeduplicatedIds(contributions, originalCon
         activity_id: contribution.activity_id,
         contribution_date: contribution.contribution_date,
         lines_added: contribution.activity_type === 'commit' ? Math.floor((contribution.lines_modified || 0) / 2) : 0,
-        lines_deleted: contribution.activity_type === 'commit' ? Math.ceil((contribution.lines_modified || 0) / 2) : 0
+        lines_deleted: contribution.activity_type === 'commit' ? Math.ceil((contribution.lines_modified || 0) / 2) : 0,
+        lines_modified: contribution.lines_modified || 0,
+        pr_number: contribution.pr_number || null
       });
     } else {
       skippedCount++;
