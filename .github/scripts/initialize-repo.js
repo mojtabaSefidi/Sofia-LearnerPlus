@@ -176,6 +176,33 @@ async function insertPullRequests(prs) {
   console.log(`✅ Successfully inserted ${totalInserted} pull requests`);
 }
 
+async function insertPRReview(prReviewData) {
+  try {
+    const { error } = await supabase
+      .from('pr_reviews')
+      .upsert({
+        pr_number: prReviewData.pr_number,
+        author_login: prReviewData.author_login,
+        reviewer_login: prReviewData.reviewer_login,
+        pr_opened_date: prReviewData.pr_opened_date,
+        pr_closed_date: prReviewData.pr_closed_date,
+        lines_modified: prReviewData.lines_modified,
+        review_submitted_date: prReviewData.review_submitted_date
+      }, { 
+        onConflict: 'pr_number,reviewer_login',
+        ignoreDuplicates: false 
+      });
+    
+    if (error) {
+      console.error(`Error inserting PR review for PR #${prReviewData.pr_number}:`, error);
+      throw error;
+    }
+  } catch (error) {
+    console.error(`Failed to insert PR review data:`, error);
+    throw error;
+  }
+}
+
 async function processPRContributions(pr, octokit, context) {
   const contributions = [];
   
@@ -187,31 +214,59 @@ async function processPRContributions(pr, octokit, context) {
       pull_number: pr.number
     });
     
-    // Get PR files to determine what files were reviewed
+    // Get PR files to determine what files were reviewed/modified
     const { data: files } = await octokit.rest.pulls.listFiles({
       owner: context.repo.owner,
       repo: context.repo.repo,
       pull_number: pr.number
     });
     
-    // Process reviews
-    for (const review of reviews) {
-      if (review.user && review.user.login !== pr.user.login) { // Don't count self-reviews
-        // For each file in the PR, record a review contribution
-        for (const file of files) {
-          contributions.push({
-            contributor_login: review.user.login,
-            file_path: file.filename,
-            activity_type: 'review',
-            activity_id: pr.number.toString(),
-            contribution_date: new Date(review.submitted_at),
-            lines_modified: 0 // Reviews don't modify lines
+    // Calculate total lines modified for this PR
+    const totalLinesModified = files.reduce((total, file) => {
+      return total + (file.additions || 0) + (file.deletions || 0);
+    }, 0);
+    
+    // Always record PR data (even without reviews)
+    const prData = {
+      pr_number: pr.number,
+      author_login: pr.user.login,
+      pr_opened_date: new Date(pr.created_at),
+      pr_closed_date: pr.closed_at ? new Date(pr.closed_at) : null,
+      lines_modified: totalLinesModified,
+      reviewer_login: null, // Will be set if there are reviews
+      review_submitted_date: null
+    };
+    
+    if (reviews.length === 0) {
+      // No reviews - record just the PR data with null reviewer
+      await insertPRReview({ ...prData, reviewer_login: 'no-reviewer' });
+      console.log(`📋 Recorded PR #${pr.number} (no reviews) by ${pr.user.login}`);
+    } else {
+      // Process reviews - record one entry per reviewer
+      for (const review of reviews) {
+        if (review.user && review.user.login !== pr.user.login) { // Don't count self-reviews
+          await insertPRReview({
+            ...prData,
+            reviewer_login: review.user.login,
+            review_submitted_date: new Date(review.submitted_at)
           });
         }
       }
+      console.log(`📋 Processed PR #${pr.number}: ${reviews.length} reviews, ${files.length} files`);
     }
     
-    console.log(`📋 Processed PR #${pr.number}: ${reviews.length} reviews, ${files.length} files`);
+    // Process file-level contributions for activity tracking
+    for (const file of files) {
+      contributions.push({
+        contributor_login: pr.user.login,
+        file_path: file.filename,
+        activity_type: 'pull_request',
+        activity_id: pr.number.toString(),
+        contribution_date: new Date(pr.created_at),
+        lines_modified: (file.additions || 0) + (file.deletions || 0),
+        pr_number: pr.number
+      });
+    }
     
   } catch (error) {
     console.warn(`⚠️ Could not process PR #${pr.number}: ${error.message}`);
