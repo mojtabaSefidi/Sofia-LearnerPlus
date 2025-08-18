@@ -10,8 +10,6 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
-// Replace the initializeRepository function with this updated version:
-
 async function initializeRepository() {
   console.log('🚀 Starting repository initialization...');
   
@@ -241,34 +239,42 @@ function parseGitShowOutputWithLines(output) {
   return files;
 }
 
-// UPDATE in initialize-repo.js - Replace getOrCreateContributor function:
+// FIXED: Enhanced contributor resolution with better GitHub username detection
 async function getOrCreateContributor(commit, contributorMap) {
   const email = commit.author_email;
   const name = commit.author_name;
   
-  // Try to get GitHub login from various sources
-  let githubLogin = await getGitHubLoginFromCommit(commit);
-  
-  // If we still don't have a GitHub login, try GitHub API
-  if (!githubLogin && process.env.GITHUB_TOKEN) {
-    githubLogin = await getGitHubLoginFromAPI(email, name);
-  }
-  
-  // If we still can't find it, use email prefix or normalized name
-  if (!githubLogin) {
-    githubLogin = extractUsernameFromEmail(email) || normalizeName(name);
-  }
-  
-  // Use GitHub login as primary key
-  let contributor = contributorMap.get(githubLogin);
+  // Primary key should be email for initial grouping
+  let contributor = contributorMap.get(email);
   
   if (!contributor) {
+    // Try to get GitHub login from various sources
+    let githubLogin = await getGitHubLoginFromCommit(commit);
+    
+    // If we still don't have a GitHub login, try GitHub API
+    if (!githubLogin && process.env.GITHUB_TOKEN) {
+      githubLogin = await getGitHubLoginFromAPI(email, name);
+    }
+    
+    // Enhanced fallback logic - be more conservative
+    if (!githubLogin) {
+      githubLogin = extractUsernameFromEmail(email);
+    }
+    
+    // If still no GitHub login, create a temporary one that deduplication can handle
+    if (!githubLogin) {
+      githubLogin = createTemporaryGitHubLogin(name, email);
+    }
+    
     contributor = {
       github_login: githubLogin,
-      canonical_name: githubLogin, // Use github_login as canonical name
+      canonical_name: normalizeName(name), // Use normalized name as canonical name
       email: email
     };
-    contributorMap.set(githubLogin, contributor);
+    
+    contributorMap.set(email, contributor); // Use email as primary key
+    
+    console.log(`👤 New contributor: ${name} -> github_login: ${githubLogin}, canonical_name: ${contributor.canonical_name}`);
   }
   
   return contributor;
@@ -281,26 +287,26 @@ async function getGitHubLoginFromCommit(commit) {
     if (commit.author_email && commit.author_email.includes('@users.noreply.github.com')) {
       const match = commit.author_email.match(/(?:\d+\+)?([^@+]+)@users\.noreply\.github\.com/);
       if (match && match[1]) {
+        console.log(`📧 Found GitHub username from noreply email: ${match[1]}`);
         return match[1];
       }
     }
     
-    // Method 2: Check if email domain suggests a GitHub username pattern
-    if (commit.author_email) {
-      const emailMatch = commit.author_email.match(/^([a-zA-Z0-9\-_]+)@/);
-      if (emailMatch && emailMatch[1] && !commit.author_email.includes('.')) {
-        // Simple email like "username@domain.com" might be GitHub username
-        return emailMatch[1];
+    // Method 2: Check commit message for GitHub mentions or signatures
+    if (commit.message) {
+      // Look for "Signed-off-by" with GitHub username
+      const signedOffMatch = commit.message.match(/Signed-off-by:.*<([^@]+)@users\.noreply\.github\.com>/i);
+      if (signedOffMatch && signedOffMatch[1]) {
+        console.log(`📝 Found GitHub username from signed-off: ${signedOffMatch[1]}`);
+        return signedOffMatch[1];
       }
-    }
-    
-    // Method 3: Try to get from git config (if available)
-    try {
-      const config = await git.listConfig();
-      const userLogin = config.all['user.login'];
-      if (userLogin) return userLogin;
-    } catch (error) {
-      // Ignore git config errors
+      
+      // Look for GitHub username mentions
+      const mentionMatch = commit.message.match(/(?:by|from|@)([a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38})\b/);
+      if (mentionMatch && mentionMatch[1] && isValidGitHubUsername(mentionMatch[1])) {
+        console.log(`💬 Found potential GitHub username from commit message: ${mentionMatch[1]}`);
+        return mentionMatch[1];
+      }
     }
     
     return null;
@@ -309,7 +315,7 @@ async function getGitHubLoginFromCommit(commit) {
   }
 }
 
-// NEW: Get GitHub username from GitHub API
+// Enhanced GitHub API lookup
 async function getGitHubLoginFromAPI(email, name) {
   if (!process.env.GITHUB_TOKEN) return null;
   
@@ -324,58 +330,93 @@ async function getGitHubLoginFromAPI(email, name) {
       });
       
       if (data.items && data.items.length > 0) {
+        console.log(`🔍 Found GitHub user via email search: ${data.items[0].login}`);
         return data.items[0].login;
       }
     } catch (emailSearchError) {
-      // Email search might not be available, try name search
-      console.log('Email search not available, trying name search...');
+      console.log('📧 Email search not available, trying name search...');
     }
     
     // Fallback: Search by name (less reliable)
     try {
-      const { data } = await octokit.rest.search.users({
-        q: `${name} in:fullname`,
-        per_page: 5
-      });
-      
-      // This is less reliable, you might want to add additional validation
-      if (data.items && data.items.length > 0) {
-        console.log(`⚠️ Found potential GitHub user for ${name}: ${data.items[0].login} (verify manually)`);
-        return data.items[0].login;
+      const normalizedName = name.replace(/[^\w\s]/g, '').trim();
+      if (normalizedName.length > 2) {
+        const { data } = await octokit.rest.search.users({
+          q: `${normalizedName} in:fullname`,
+          per_page: 3
+        });
+        
+        if (data.items && data.items.length > 0) {
+          // Return the most likely match (you might want to add more validation)
+          console.log(`🔍 Found potential GitHub user via name search: ${data.items[0].login} for ${name}`);
+          return data.items[0].login;
+        }
       }
     } catch (nameSearchError) {
-      console.log('Name search also failed');
+      console.log('👤 Name search also failed');
     }
     
   } catch (error) {
-    console.log(`Could not resolve GitHub username for ${email}: ${error.message}`);
+    console.log(`❌ Could not resolve GitHub username for ${email}: ${error.message}`);
   }
   
   return null;
 }
 
-// NEW: Extract username from email patterns
+// Enhanced username extraction from email
 function extractUsernameFromEmail(email) {
   if (!email) return null;
   
+  // GitHub noreply emails
+  if (email.includes('@users.noreply.github.com')) {
+    const match = email.match(/(?:\d+\+)?([^@+]+)@users\.noreply\.github\.com/);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  
   // Common patterns where email prefix might be GitHub username
-  const commonDomains = ['gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com'];
+  const personalDomains = ['gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com'];
   const emailParts = email.toLowerCase().split('@');
   
   if (emailParts.length === 2) {
     const [localPart, domain] = emailParts;
     
-    // If it's a common personal email domain and local part looks like a username
-    if (commonDomains.includes(domain) && localPart.match(/^[a-zA-Z0-9\-_]+$/)) {
-      // Remove common non-username patterns
-      const cleaned = localPart.replace(/\.(work|dev|code|git)$/, '');
-      if (cleaned.length >= 3 && cleaned.length <= 39) { // GitHub username constraints
-        return cleaned;
-      }
+    // If it's a personal email domain and local part looks like a username
+    if (personalDomains.includes(domain) && isValidGitHubUsername(localPart)) {
+      console.log(`📧 Extracted potential GitHub username from email: ${localPart}`);
+      return localPart;
     }
   }
   
   return null;
+}
+
+// Check if a string could be a valid GitHub username
+function isValidGitHubUsername(username) {
+  // GitHub username rules: 1-39 characters, alphanumeric or hyphens, can't start/end with hyphen
+  return /^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$/.test(username);
+}
+
+// Create a temporary GitHub login for deduplication to handle
+function createTemporaryGitHubLogin(name, email) {
+  // First try email prefix
+  if (email) {
+    const emailPrefix = email.split('@')[0];
+    if (isValidGitHubUsername(emailPrefix)) {
+      return emailPrefix;
+    }
+  }
+  
+  // Then try normalized name
+  const normalized = normalizeName(name);
+  if (normalized && normalized.length >= 3 && normalized.length <= 39) {
+    return normalized;
+  }
+  
+  // Last resort: create a safe temporary identifier
+  const safe = name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase().substring(0, 20);
+  return safe || 'unknown';
 }
 
 async function getOrCreateFile(fileChange, fileMap) {
@@ -393,28 +434,6 @@ async function getOrCreateFile(fileChange, fileMap) {
   return file;
 }
 
-function parseGitShowOutput(output) {
-  const lines = output.split('\n').filter(line => line.trim() && line.match(/^[AMDRT]/));
-  return lines.map(line => {
-    const parts = line.split('\t');
-    const status = parts[0];
-    let file = parts[1];
-    let oldFile = null;
-    
-    // Handle rename/copy cases
-    if (status.startsWith('R') || status.startsWith('C')) {
-      oldFile = parts[1];
-      file = parts[2];
-    }
-    
-    return {
-      status: status[0], // First character (A, M, D, R, C, T)
-      file: file,
-      oldFile: oldFile
-    };
-  });
-}
-
 function normalizeName(name) {
   return name
     .replace(/[^a-zA-Z0-9\s]/g, '')
@@ -423,22 +442,7 @@ function normalizeName(name) {
     .replace(/\s+/g, '');
 }
 
-async function getGitHubLogin(email, name) {
-  // Try to get GitHub login from git config
-  try {
-    const config = await git.listConfig();
-    const userLogin = config.all['user.login'];
-    if (userLogin) return userLogin;
-  } catch (error) {
-    // Ignore config errors
-  }
-  
-  // Fallback to normalized name
-  return normalizeName(name);
-}
-
 // Replace the insertContributors function with this updated version:
-
 async function insertContributors(contributors) {
   if (contributors.length === 0) return;
   
@@ -507,99 +511,6 @@ async function insertFiles(files) {
     
     console.log(`📁 Inserted files batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(files.length/batchSize)}`);
   }
-}
-
-async function insertContributions(contributions) {
-  if (contributions.length === 0) return;
-  
-  console.log(`🔗 Processing ${contributions.length} contributions...`);
-  
-  // Get the actual IDs from the database (after deduplication)
-  const { data: dbContributors, error: contributorError } = await supabase
-    .from('contributors')
-    .select('id, canonical_name, github_login, email');
-    
-  if (contributorError) {
-    console.error('Error fetching contributors:', contributorError);
-    throw contributorError;
-  }
-    
-  const { data: dbFiles, error: filesError } = await supabase
-    .from('files')
-    .select('id, canonical_path');
-  
-  if (filesError) {
-    console.error('Error fetching files:', filesError);
-    throw filesError;
-  }
-  
-  console.log(`📊 Found ${dbContributors.length} contributors and ${dbFiles.length} files in database`);
-  
-  // Create lookup maps
-  const contributorLookup = new Map();
-  dbContributors.forEach(c => {
-    contributorLookup.set(c.email, c.id);
-    contributorLookup.set(c.canonical_name, c.id);
-  });
-  
-  const fileLookup = new Map();
-  dbFiles.forEach(f => {
-    fileLookup.set(f.canonical_path, f.id);
-  });
-  
-  // Map contributions to database IDs
-  const mappedContributions = [];
-  let skippedCount = 0;
-  
-  for (const contribution of contributions) {
-    const contributorId = contributorLookup.get(contribution.contributor_email) || 
-                         contributorLookup.get(contribution.contributor_canonical_name);
-    const fileId = fileLookup.get(contribution.file_path);
-    
-    if (contributorId && fileId) {
-      mappedContributions.push({
-        contributor_id: contributorId,
-        file_id: fileId,
-        activity_type: contribution.activity_type,
-        activity_id: contribution.activity_id,
-        contribution_date: contribution.contribution_date
-      });
-    } else {
-      skippedCount++;
-      if (skippedCount <= 5) { // Log first few for debugging
-        console.warn(`⚠️ Skipping contribution - Contributor: ${contribution.contributor_email} (ID: ${contributorId}), File: ${contribution.file_path} (ID: ${fileId})`);
-      }
-    }
-  }
-  
-  console.log(`🔗 Mapped ${mappedContributions.length} contributions (skipped ${skippedCount})`);
-  
-  if (mappedContributions.length === 0) {
-    console.warn('⚠️ No contributions to insert after mapping!');
-    return;
-  }
-  
-  // Insert in batches
-  const batchSize = 500;
-  let totalInserted = 0;
-  
-  for (let i = 0; i < mappedContributions.length; i += batchSize) {
-    const batch = mappedContributions.slice(i, i + batchSize);
-    const { data, error } = await supabase
-      .from('contributions')
-      .insert(batch)
-      .select('id');
-    
-    if (error) {
-      console.error('Error inserting contributions batch:', error);
-      // Continue with next batch instead of failing completely
-    } else {
-      totalInserted += batch.length;
-      console.log(`🔗 Inserted contributions batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(mappedContributions.length/batchSize)} (${totalInserted} total)`);
-    }
-  }
-  
-  console.log(`✅ Successfully inserted ${totalInserted} contributions`);
 }
 
 async function updateMetadata(key, value) {
