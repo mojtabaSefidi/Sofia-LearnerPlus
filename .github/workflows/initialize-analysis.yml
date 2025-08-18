@@ -9,54 +9,51 @@ on:
         required: false
         default: 'false'
 
-# Give the GITHUB_TOKEN the specific permissions your scripts need
-permissions:
-  pull-requests: read
-  contents: read
-
 jobs:
   initialize:
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      repository-projects: read
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # full history
-
+          fetch-depth: 0  # Get full history
+          
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-
+          
       - name: Install Dependencies
-        # use working-directory if package.json is inside .github, otherwise remove it
-        working-directory: .github
-        run: npm ci
-
+        run: |
+          cd .github
+          npm install
+          
       - name: Initialize Database Schema
-        # If you want automation: add SUPABASE_SERVICE_ROLE_KEY and run the supabase CLI here.
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Run database setup if needed
           echo "Database schema should be set up manually in Supabase dashboard"
-          echo "Otherwise, this step is informational — run .github/scripts/db-setup.sql manually in Supabase."
           echo "Run the SQL script from .github/scripts/db-setup.sql in your Supabase SQL editor"
-
+          
       - name: Initialize Repository Analysis
-        # Make sure the script has access to GITHUB_TOKEN and your Supabase admin key if needed
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FORCE_REINIT: ${{ github.event.inputs.force_reinit }}
         run: |
-          # run the script by absolute path so we don't depend on cd
-          node .github/scripts/initialize-repo.js
-
+          cd .github
+          node scripts/initialize-repo.js
+          
       - name: Summary
         run: |
           echo "🎉 Repository analysis initialization completed!"
