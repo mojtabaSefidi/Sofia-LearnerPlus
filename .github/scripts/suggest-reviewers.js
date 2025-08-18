@@ -356,34 +356,39 @@ No developers found with prior experience on these files. Consider assigning rev
 - Code architecture knowledge
 - Subject matter expertise`;
   } else {
-    comment += `\n### 👥 Reviewer Candidates (Q3 2024)
+    comment += `\n### 👥 Reviewer Candidates
 
-| Developer | Knows | Learns | WS% | PR% | RTM% | ΔGini | AvgTime(h) | AvgSize | L/h | LastRev | LastRevPR |
-|-----------|-------|--------|-----|-----|------|-------|------------|---------|-----|---------|----------|
+| Developer | Knows | Learns | WorkloadShare% | PercentileRank% | Relative To Mean% | ΔGiniWorkload(Absolute)  | AvgTime(h) | AvgSize(line) | line/hour | LastReview     | LastReviewOnPRFile |
+|-----------|-------|--------|----------------|-----------------|-------------------|--------------------------|------------|---------------|-----------|----------------|--------------------|
 `;
-    
+
     reviewerMetrics.forEach(metrics => {
-      const formatDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('en-US', {month: 'short', day: 'numeric'}) : 'N/A';
-      const formatNumber = (num, decimals = 1) => typeof num === 'number' ? num.toFixed(decimals) : '0.0';
+      const formatDate = (dateStr) => 
+        dateStr 
+          ? new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) 
+          : 'N/A';
+      const formatNumber = (num, decimals = 1) => 
+        typeof num === 'number' ? num.toFixed(decimals) : '0.0';
       
       comment += `| @${metrics.login} | ${metrics.knows} | ${metrics.learns} | ${formatNumber(metrics.workloadShare)} | ${formatNumber(metrics.percentileRank)} | ${formatNumber(metrics.relativeToMean)} | ${formatNumber(metrics.giniWorkload)} | ${formatNumber(metrics.avgReviewTimeHours)} | ${Math.round(metrics.avgReviewSizeLines)} | ${formatNumber(metrics.linesPerHour)} | ${formatDate(metrics.lastReviewDate)} | ${formatDate(metrics.lastReviewInPRFiles)} |\n`;
     });
     
-    comment += `\n**Enhanced Legend:**
-- **Knows**: Files in this PR the candidate has worked on before
-- **Learns**: Files in this PR the candidate hasn't worked on before (${filePaths.length} total files - Knows)
-- **WS%**: Workload Share - percentage of total reviews in last quarter
-- **PR%**: Percentile Rank - percentile position in team workload distribution  
-- **RTM%**: Relative To Mean - percentage difference from team average workload
-- **ΔGini**: Absolute Gini Workload coefficient (measure of workload inequality)
-- **AvgTime(h)**: Average review time in hours (PR close - PR open) in last quarter
-- **AvgSize**: Average review size in lines modified in last quarter
-- **L/h**: Lines reviewed per hour (AvgSize / AvgTime)
-- **LastRev**: Date of last review activity
-- **LastRevPR**: Date of last review in any of this PR's files
+    comment += `\n**Legend:**
+- **Knows**: Files in this PR the reviewer has worked on before  
+- **Learns**: Files in this PR new to the reviewer (${filePaths.length} total - Knows)  
+- **WorkloadShare%**: Percentage of total reviews in the last quarter  
+- **PercentileRank%**: Position in team workload distribution  
+- **Relative To Mean%**: Deviation from the team average workload  
+- **ΔGiniWorkload(Absolute)**: Gini coefficient of workload inequality  
+- **AvgTime(h)**: Average review time in hours  
+- **AvgSize(line)**: Average diff size in lines  
+- **line/hour**: Lines reviewed per hour  
+- **LastReview**: Date of last review activity  
+- **LastReviewOnPRFile**: Date of last review on any file in this PR  
+`;
 
-<details>
-<summary>📊 Additional Metrics & Activity Timeline</summary>
+
+📊 Additional Metrics & Activity Timeline
 
 ### Activity Timeline
 | Developer | LastCommit | LastModPR | L-Commits | L-Reviews | G-Commits | G-Reviews | A-Months |
@@ -391,7 +396,11 @@ No developers found with prior experience on these files. Consider assigning rev
 `;
 
     reviewerMetrics.forEach(metrics => {
-      const formatDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('en-US', {month: 'short', day: 'numeric'}) : 'N/A';
+      const formatDate = (dateStr) => 
+        dateStr 
+          ? new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) 
+          : 'N/A';
+
       
       comment += `| @${metrics.login} | ${formatDate(metrics.lastCommitDate)} | ${formatDate(metrics.lastModificationInPRFiles)} | ${metrics.lCommits} | ${metrics.lReviews} | ${metrics.gCommits} | ${metrics.gReviews} | ${metrics.aMonths} |\n`;
     });
@@ -405,26 +414,26 @@ No developers found with prior experience on these files. Consider assigning rev
 - **G-Reviews**: Global reviews in the last year
 - **A-Months**: Active months in the last year
 
-### File Knowledge Breakdown
-`;
+// ### File Knowledge Breakdown
+// `;
     
-    reviewerMetrics.forEach(metrics => {
-      if (metrics.knownFilesList.length > 0) {
-        comment += `**@${metrics.login}** knows these files:\n`;
-        metrics.knownFilesList.forEach(file => {
-          comment += `- \`${file}\`\n`;
-        });
-        comment += '\n';
-      }
-    });
+//     reviewerMetrics.forEach(metrics => {
+//       if (metrics.knownFilesList.length > 0) {
+//         comment += `**@${metrics.login}** knows these files:\n`;
+//         metrics.knownFilesList.forEach(file => {
+//           comment += `- \`${file}\`\n`;
+//         });
+//         comment += '\n';
+//       }
+//     });
     
-    comment += `</details>`;
-  }
+//     comment += `</details>`;
+//   }
   
-  comment += `\n---
-*This enhanced analysis includes workload distribution metrics and performance indicators from the last quarter (3 months). Workload metrics help ensure fair distribution of review responsibilities across the team.*
+//   comment += `\n---
+// *This enhanced analysis includes workload distribution metrics and performance indicators from the last quarter (3 months). Workload metrics help ensure fair distribution of review responsibilities across the team.*
 
-*Generated for PR by @${prAuthor}*`;
+// *Generated for PR by @${prAuthor}*`;
   
   return comment;
 }
