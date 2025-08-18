@@ -248,8 +248,13 @@ async function getOrCreateContributor(commit, contributorMap) {
   let contributor = contributorMap.get(email);
   
   if (!contributor) {
-    // Try to get GitHub login from various sources
-    let githubLogin = await getGitHubLoginFromCommit(commit);
+    // Check known mappings first
+    let githubLogin = checkKnownMappings(email, name);
+    
+    if (!githubLogin) {
+      // Try to get GitHub login from various sources
+      githubLogin = await getGitHubLoginFromCommit(commit);
+    }
     
     // If we still don't have a GitHub login, try GitHub API
     if (!githubLogin && process.env.GITHUB_TOKEN) {
@@ -278,6 +283,27 @@ async function getOrCreateContributor(commit, contributorMap) {
   }
   
   return contributor;
+}
+
+// Check known contributor mappings
+function checkKnownMappings(email, name) {
+  if (!email || !name) return null;
+  
+  // Check email mapping
+  const emailLower = email.toLowerCase();
+  if (KNOWN_CONTRIBUTOR_MAPPINGS[emailLower]) {
+    console.log(`🎯 Found known mapping for email ${email}: ${KNOWN_CONTRIBUTOR_MAPPINGS[emailLower]}`);
+    return KNOWN_CONTRIBUTOR_MAPPINGS[emailLower];
+  }
+  
+  // Check name mapping
+  const nameLower = name.toLowerCase();
+  if (KNOWN_CONTRIBUTOR_MAPPINGS[nameLower]) {
+    console.log(`🎯 Found known mapping for name "${name}": ${KNOWN_CONTRIBUTOR_MAPPINGS[nameLower]}`);
+    return KNOWN_CONTRIBUTOR_MAPPINGS[nameLower];
+  }
+  
+  return null;
 }
 
 // Enhanced function to get GitHub login from commit
@@ -362,6 +388,20 @@ async function getGitHubLoginFromAPI(email, name) {
   
   return null;
 }
+
+// Known contributor mappings for difficult cases
+const KNOWN_CONTRIBUTOR_MAPPINGS = {
+  // Email -> GitHub username mappings
+  'mohammadali.sefidi@gmail.com': 'mojtabaSefidi',
+  'sefidi.mohammadali@gmail.com': 'mojtabaSefidi',
+  // Name -> GitHub username mappings
+  'mohammadali sefidi esfahani': 'mojtabaSefidi',
+  'mohammadali sefidi': 'mojtabaSefidi',
+  'saman9452': 'saman9452',
+  'samaneh malmir': 'saman9452',
+  'fahimeh hajari': 'fahimeh1368',
+  'fahimeh': 'fahimeh1368'
+};
 
 // Enhanced username extraction from email
 function extractUsernameFromEmail(email) {
