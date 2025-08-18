@@ -1,59 +1,32 @@
 // .github/scripts/deduplicate-contributors.js
 const { createClient } = require('@supabase/supabase-js');
-const core = require('@actions/core');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
 );
 
-// Define contributor merge rules
-const CONTRIBUTOR_MERGE_RULES = [
-  // Ehsan - merge by similar names and email domains
+// Predefined merge rules for known contributors
+const MERGE_RULES = [
   {
-    primaryId: null, // Will be determined
-    identifiers: [
-      { github_login: 'ehsanmirsaeedi' },
-      { github_login: 'ehsan' },
-      { github_login: 'mirsaeedi' },
-      { email: 'mirsaeedi@outlook.com' },
-      { email: 'ehsan@dacunha.encs.concordia.ca' }
-    ],
-    preferredProfile: {
-      github_login: 'mirsaeedi',
-      canonical_name: 'ehsanmirsaeedi',
-      email: 'mirsaeedi@outlook.com'
-    }
+    canonical_name: 'ehsanmirsaeedi',
+    preferred_github_login: 'mirsaeedi',
+    merge_with: ['ehsan', 'ehsanmirsaeedi']
   },
-  // Fahimeh - merge by similar names
   {
-    primaryId: null,
-    identifiers: [
-      { github_login: 'fahimehhajari' },
-      { github_login: 'fahimeh' },
-      { email: 'fahime.hajari@gmail.com' },
-      { email: '54951311+fahimeh1368@users.noreply.github.com' }
-    ],
-    preferredProfile: {
-      github_login: 'fahimeh1368',
-      canonical_name: 'fahimehhajari',
-      email: 'fahime.hajari@gmail.com'
-    }
+    canonical_name: 'fahimehhajari',
+    preferred_github_login: 'fahimeh1368',  // Use the actual GitHub username
+    merge_with: ['fahimehhajari', 'fahimeh1368']
   },
-  // Samane/Saman - merge by similar emails (case insensitive)
   {
-    primaryId: null,
-    identifiers: [
-      { github_login: 'saman9452' },
-      { github_login: 'samanehmalmir' },
-      { email: 'Samanemalmir73@gmail.com' },
-      { email: 'samanemalmir73@gmail.com' }
-    ],
-    preferredProfile: {
-      github_login: 'saman9452',
-      canonical_name: 'samanehmalmir',
-      email: 'samanemalmir73@gmail.com'
-    }
+    canonical_name: 'samanehmalmir',
+    preferred_github_login: 'saman9452',  // Use the correct GitHub username
+    merge_with: ['samanemalmir73', 'saman9452']
+  },
+  {
+    canonical_name: 'mohammadalisefidiesfahani',
+    preferred_github_login: 'mojtabaSefidi',  // Use the correct GitHub username
+    merge_with: ['mohammadalisefidiesfahani', 'mojtabasefidi']
   }
 ];
 
@@ -61,130 +34,190 @@ async function deduplicateContributors() {
   console.log('🔍 Starting contributor deduplication...');
   
   try {
-    // Get all contributors
-    const { data: allContributors, error } = await supabase
+    const { data: contributors, error } = await supabase
       .from('contributors')
       .select('*')
       .order('id');
     
     if (error) throw error;
     
-    console.log(`📊 Found ${allContributors.length} contributors to analyze`);
+    console.log(`📊 Found ${contributors.length} contributors to analyze`);
     
-    let mergedCount = 0;
+    let mergeCount = 0;
+    let autoDetectedCount = 0;
+    const processedContributors = new Set();
     
-    for (const mergeRule of CONTRIBUTOR_MERGE_RULES) {
-      const result = await processMergeRule(mergeRule, allContributors);
-      if (result.merged) {
-        mergedCount++;
-        console.log(`✅ Merged contributors for: ${result.preferredProfile.canonical_name}`);
+    // Process predefined merge rules first
+    for (const rule of MERGE_RULES) {
+      console.log(`🔄 Processing merge rule for ${rule.canonical_name}...`);
+      
+      // Find contributors that match this merge rule
+      const matchingContributors = contributors.filter(c => 
+        rule.merge_with.some(name => 
+          c.github_login.toLowerCase() === name.toLowerCase() ||
+          c.canonical_name.toLowerCase() === name.toLowerCase()
+        ) && !processedContributors.has(c.id)
+      );
+      
+      if (matchingContributors.length > 1) {
+        console.log(`🎯 Found ${matchingContributors.length} contributors to merge:`, matchingContributors.map(c => c.github_login));
+        
+        // Choose the primary contributor using enhanced logic
+        const primary = choosePrimaryContributor(matchingContributors, rule);
+        const duplicates = matchingContributors.filter(c => c.id !== primary.id);
+        
+        console.log(`👑 Primary contributor selected: ${primary.github_login} (ID: ${primary.id})`);
+        console.log(`🔄 Duplicates to merge: ${duplicates.map(d => `${d.github_login} (ID: ${d.id})`).join(', ')}`);
+        
+        // Update the primary contributor with preferred information
+        await updatePrimaryContributor(primary, rule);
+        
+        // Merge contributions and delete duplicates
+        for (const duplicate of duplicates) {
+          await mergeContributions(duplicate.id, primary.id);
+          await deleteContributor(duplicate.id);
+          processedContributors.add(duplicate.id);
+        }
+        
+        processedContributors.add(primary.id);
+        mergeCount++;
+        
+        console.log(`✅ Merged contributors for: ${rule.canonical_name}`);
+      } else {
+        console.log(`ℹ️ No duplicates found for: ${rule.canonical_name}`);
       }
     }
     
-    // Auto-detect additional duplicates
-    const autoDetectedMerges = await autoDetectDuplicates(allContributors);
+    // Auto-detect potential duplicates for manual review
+    const remainingContributors = contributors.filter(c => !processedContributors.has(c.id));
+    const potentialDuplicates = await detectPotentialDuplicates(remainingContributors);
     
-    console.log(`🎉 Deduplication completed!`);
+    if (potentialDuplicates.length > 0) {
+      console.log('🤖 Auto-detecting potential duplicates...');
+      autoDetectedCount = potentialDuplicates.length;
+    }
+    
+    console.log('🎉 Deduplication completed!');
     console.log(`📈 Statistics:
-    - Manual merge rules processed: ${CONTRIBUTOR_MERGE_RULES.length}
-    - Contributors merged: ${mergedCount}
-    - Auto-detected potential duplicates: ${autoDetectedMerges.length}`);
+    - Manual merge rules processed: ${MERGE_RULES.length}
+    - Contributors merged: ${mergeCount}
+    - Auto-detected potential duplicates: ${autoDetectedCount}`);
     
-    if (autoDetectedMerges.length > 0) {
+    if (potentialDuplicates.length > 0) {
       console.log('\n🤖 Auto-detected potential duplicates (review manually):');
-      autoDetectedMerges.forEach(group => {
+      potentialDuplicates.forEach(group => {
         console.log(`- Similar: ${group.map(c => c.github_login).join(', ')}`);
       });
     }
     
   } catch (error) {
     console.error('❌ Error during deduplication:', error);
-    core.setFailed(error.message);
+    throw error;
   }
 }
 
-// Updated processMergeRule
-async function processMergeRule(mergeRule, allContributors) {
-  console.log(`🔄 Processing merge rule for ${mergeRule.preferredProfile.canonical_name}...`);
-  
-  const matchingContributors = [];
-  
-  for (const contributor of allContributors) {
-    const matches = mergeRule.identifiers.some(identifier => {
-      if (identifier.github_login && contributor.github_login === identifier.github_login) return true;
-      if (identifier.email && contributor.email && 
-          contributor.email.toLowerCase() === identifier.email.toLowerCase()) return true;
-      if (identifier.canonical_name && contributor.canonical_name === identifier.canonical_name) return true;
-      return false;
-    });
-    if (matches) matchingContributors.push(contributor);
+function choosePrimaryContributor(contributors, rule) {
+  // Priority 1: Use the preferred GitHub login from the rule
+  if (rule.preferred_github_login) {
+    const preferred = contributors.find(c => 
+      c.github_login.toLowerCase() === rule.preferred_github_login.toLowerCase()
+    );
+    if (preferred) {
+      console.log(`🎯 Using rule-specified preferred contributor: ${preferred.github_login}`);
+      return preferred;
+    }
   }
   
-  if (matchingContributors.length <= 1) {
-    console.log(`ℹ️ Only ${matchingContributors.length} contributor found for this rule, skipping`);
-    return { merged: false };
-  }
+  // Priority 2: Choose based on GitHub username quality
+  const scored = contributors.map(c => ({
+    contributor: c,
+    score: calculateContributorScore(c)
+  })).sort((a, b) => b.score - a.score);
   
-  console.log(`🎯 Found ${matchingContributors.length} contributors to merge:`, 
-    matchingContributors.map(c => c.github_login));
+  console.log('🔍 Contributor scores:', scored.map(s => `${s.contributor.github_login}: ${s.score}`));
   
-  matchingContributors.sort((a, b) => a.id - b.id);
-  const primaryContributor = matchingContributors[0];
-  const duplicateContributors = matchingContributors.slice(1);
-  
-  try {
-    await updatePrimaryContributorSafely(primaryContributor, mergeRule.preferredProfile);
-  } catch (error) {
-    console.warn(`⚠️ Could not update primary contributor profile: ${error.message}`);
-  }
-  
-  for (const duplicate of duplicateContributors) {
-    await mergeContributions(duplicate.id, primaryContributor.id);
-    await deleteContributor(duplicate.id);
-  }
-  
-  return { merged: true, primaryId: primaryContributor.id, preferredProfile: mergeRule.preferredProfile };
+  return scored[0].contributor;
 }
 
-async function updatePrimaryContributorSafely(primaryContributor, preferredProfile) {
-  const { data: existingWithLogin } = await supabase
-    .from('contributors')
-    .select('id')
-    .eq('github_login', preferredProfile.github_login)
-    .neq('id', primaryContributor.id)
-    .single();
+function calculateContributorScore(contributor) {
+  let score = 0;
   
-  const updateData = {
-    canonical_name: preferredProfile.canonical_name,
-    email: preferredProfile.email
+  // Higher score for GitHub noreply emails (most reliable)
+  if (contributor.email && contributor.email.includes('@users.noreply.github.com')) {
+    score += 100;
+  }
+  
+  // Higher score for valid GitHub username patterns
+  if (isValidGitHubUsername(contributor.github_login)) {
+    score += 50;
+  }
+  
+  // Lower score for obviously normalized names (all lowercase, no separators)
+  if (contributor.github_login === contributor.canonical_name) {
+    score -= 20;
+  }
+  
+  // Higher score for usernames that aren't just normalized full names
+  if (!looksLikeNormalizedName(contributor.github_login)) {
+    score += 30;
+  }
+  
+  // Higher score for shorter, more username-like strings
+  if (contributor.github_login.length <= 20) {
+    score += 10;
+  }
+  
+  // Higher score if it contains numbers (common in usernames)
+  if (/\d/.test(contributor.github_login)) {
+    score += 20;
+  }
+  
+  return score;
+}
+
+function isValidGitHubUsername(username) {
+  return /^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$/.test(username);
+}
+
+function looksLikeNormalizedName(username) {
+  // Check if it looks like a normalized full name (e.g., "johndoesmith")
+  // This is heuristic - long strings with no numbers or special chars
+  return username.length > 15 && !/\d/.test(username) && !/[-_]/.test(username);
+}
+
+async function updatePrimaryContributor(primary, rule) {
+  const updates = {
+    canonical_name: rule.canonical_name
   };
   
-  if (!existingWithLogin) {
-    updateData.github_login = preferredProfile.github_login;
-  } else {
-    console.log(`⚠️ GitHub login '${preferredProfile.github_login}' already exists, keeping original: '${primaryContributor.github_login}'`);
+  // Update github_login if specified in rule
+  if (rule.preferred_github_login && 
+      primary.github_login.toLowerCase() !== rule.preferred_github_login.toLowerCase()) {
+    updates.github_login = rule.preferred_github_login;
+    console.log(`🔄 Updating GitHub login from '${primary.github_login}' to '${rule.preferred_github_login}'`);
   }
   
   const { error } = await supabase
     .from('contributors')
-    .update(updateData)
-    .eq('id', primaryContributor.id);
+    .update(updates)
+    .eq('id', primary.id);
   
   if (error) {
     console.error('Error updating primary contributor:', error);
     throw error;
   }
   
-  console.log(`📝 Updated primary contributor (ID: ${primaryContributor.id}) with preferred profile`);
+  console.log(`📝 Updated primary contributor (ID: ${primary.id}) with preferred profile`);
 }
 
-async function mergeContributions(duplicateId, primaryId) {
+async function mergeContributions(fromContributorId, toContributorId) {
+  // Update all contributions from duplicate to primary
   const { data, error } = await supabase
     .from('contributions')
-    .update({ contributor_id: primaryId })
-    .eq('contributor_id', duplicateId)
+    .update({ contributor_id: toContributorId })
+    .eq('contributor_id', fromContributorId)
     .select('id');
-    
+  
   if (error) {
     console.error('Error merging contributions:', error);
     throw error;
@@ -199,168 +232,83 @@ async function deleteContributor(contributorId) {
     .from('contributors')
     .delete()
     .eq('id', contributorId);
-    
+  
   if (error) {
-    console.error('Error deleting duplicate contributor:', error);
+    console.error('Error deleting contributor:', error);
     throw error;
   }
   
   console.log(`🗑️ Deleted duplicate contributor (ID: ${contributorId})`);
 }
 
-// Enhanced auto-detection
-async function autoDetectDuplicates(contributors) {
-  console.log('🤖 Auto-detecting potential duplicates...');
-  
-  const potentialGroups = [];
+async function detectPotentialDuplicates(contributors) {
+  const groups = [];
   const processed = new Set();
   
   for (let i = 0; i < contributors.length; i++) {
     if (processed.has(i)) continue;
-    const current = contributors[i];
-    const similarContributors = [current];
+    
+    const similar = [contributors[i]];
     processed.add(i);
     
     for (let j = i + 1; j < contributors.length; j++) {
       if (processed.has(j)) continue;
-      const other = contributors[j];
-      if (areSimilarEnhanced(current, other)) {
-        similarContributors.push(other);
+      
+      if (areSimilar(contributors[i], contributors[j])) {
+        similar.push(contributors[j]);
         processed.add(j);
       }
     }
-    if (similarContributors.length > 1) potentialGroups.push(similarContributors);
-  }
-  
-  let autoMergedCount = 0;
-  const manualReviewGroups = [];
-  
-  for (const group of potentialGroups) {
-    const confidence = calculateMergeConfidence(group);
-    if (confidence > 0.9) {
-      console.log(`🤖 Auto-merging high confidence group: ${group.map(c => c.github_login).join(', ')}`);
-      await autoMergeGroup(group);
-      autoMergedCount++;
-    } else {
-      manualReviewGroups.push(group);
+    
+    if (similar.length > 1) {
+      groups.push(similar);
     }
   }
   
-  if (autoMergedCount > 0) {
-    console.log(`🎯 Auto-merged ${autoMergedCount} high-confidence duplicate groups`);
-  }
-  
-  return manualReviewGroups;
+  return groups;
 }
 
-function areSimilarEnhanced(contributor1, contributor2) {
-  if (contributor1.email && contributor2.email) {
-    if (contributor1.email.toLowerCase() === contributor2.email.toLowerCase()) return true;
+function areSimilar(c1, c2) {
+  // Check email similarity
+  if (c1.email && c2.email && c1.email.toLowerCase() === c2.email.toLowerCase()) {
+    return true;
   }
   
-  const name1 = contributor1.canonical_name.toLowerCase();
-  const name2 = contributor2.canonical_name.toLowerCase();
-  const login1 = contributor1.github_login.toLowerCase();
-  const login2 = contributor2.github_login.toLowerCase();
+  // Check name similarity (Levenshtein distance)
+  const nameDistance = levenshteinDistance(
+    c1.canonical_name.toLowerCase(), 
+    c2.canonical_name.toLowerCase()
+  );
   
-  if (removeNumbersAndSpecialChars(name1) === removeNumbersAndSpecialChars(name2) && removeNumbersAndSpecialChars(name1).length > 3) return true;
-  if (removeNumbersAndSpecialChars(login1) === removeNumbersAndSpecialChars(login2) && removeNumbersAndSpecialChars(login1).length > 3) return true;
+  const maxLen = Math.max(c1.canonical_name.length, c2.canonical_name.length);
+  const similarity = 1 - (nameDistance / maxLen);
   
-  if (contributor1.email && contributor2.email) {
-    const [local1, domain1] = contributor1.email.toLowerCase().split('@');
-    const [local2, domain2] = contributor2.email.toLowerCase().split('@');
-    if (domain1 === domain2 && calculateSimilarity(local1, local2) > 0.8) return true;
-  }
-  
-  return false;
-}
-
-function removeNumbersAndSpecialChars(str) {
-  return str.replace(/[0-9\-_\.]/g, '');
-}
-
-function calculateMergeConfidence(group) {
-  let confidence = 0;
-  const [first, ...rest] = group;
-  
-  for (const contributor of rest) {
-    if (first.email && contributor.email && first.email.toLowerCase() === contributor.email.toLowerCase()) {
-      confidence += 0.5;
-    }
-    confidence += calculateSimilarity(first.canonical_name.toLowerCase(), contributor.canonical_name.toLowerCase()) * 0.3;
-    confidence += calculateSimilarity(first.github_login.toLowerCase(), contributor.github_login.toLowerCase()) * 0.2;
-  }
-  
-  return Math.min(confidence / rest.length, 1.0);
-}
-
-async function autoMergeGroup(group) {
-  group.sort((a, b) => a.id - b.id);
-  const primary = group[0];
-  const duplicates = group.slice(1);
-  const bestProfile = chooseBestProfile(group);
-  
-  try {
-    await updatePrimaryContributorSafely(primary, bestProfile);
-  } catch (error) {
-    console.warn(`⚠️ Could not update auto-merged contributor profile: ${error.message}`);
-  }
-  
-  for (const duplicate of duplicates) {
-    await mergeContributions(duplicate.id, primary.id);
-    await deleteContributor(duplicate.id);
-  }
-}
-
-function chooseBestProfile(group) {
-  const withRealEmail = group.filter(c => c.email && !c.email.includes('noreply.github.com'));
-  const preferredContributor = withRealEmail.length > 0 ? withRealEmail[0] : group[0];
-  
-  const bestLogin = group.reduce((best, current) => {
-    if (!best.github_login) return current;
-    if (!current.github_login) return best;
-    if (current.github_login.length > best.github_login.length) return current;
-    if (current.github_login.length === best.github_login.length && !current.github_login.match(/\d+$/)) return current;
-    return best;
-  }, group[0]);
-  
-  return {
-    github_login: bestLogin.github_login,
-    canonical_name: preferredContributor.canonical_name,
-    email: preferredContributor.email
-  };
-}
-
-function calculateSimilarity(str1, str2) {
-  const longer = str1.length > str2.length ? str1 : str2;
-  const shorter = str1.length > str2.length ? str2 : str1;
-  if (longer.length === 0) return 1.0;
-  const editDistance = levenshteinDistance(longer, shorter);
-  return (longer.length - editDistance) / longer.length;
+  return similarity > 0.8; // 80% similarity threshold
 }
 
 function levenshteinDistance(str1, str2) {
-  const matrix = [];
-  for (let i = 0; i <= str2.length; i++) matrix[i] = [i];
-  for (let j = 0; j <= str1.length; j++) matrix[0][j] = j;
-  for (let i = 1; i <= str2.length; i++) {
-    for (let j = 1; j <= str1.length; j++) {
-      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j] + 1
-        );
-      }
+  const matrix = Array(str2.length + 1).fill().map(() => Array(str1.length + 1).fill(0));
+  
+  for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
+  for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
+  
+  for (let j = 1; j <= str2.length; j++) {
+    for (let i = 1; i <= str1.length; i++) {
+      const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+      matrix[j][i] = Math.min(
+        matrix[j][i - 1] + 1,
+        matrix[j - 1][i] + 1,
+        matrix[j - 1][i - 1] + cost
+      );
     }
   }
+  
   return matrix[str2.length][str1.length];
 }
 
+// Run if called directly
 if (require.main === module) {
   deduplicateContributors();
 }
 
-module.exports = { deduplicateContributors, CONTRIBUTOR_MERGE_RULES };
+module.exports = { deduplicateContributors };
