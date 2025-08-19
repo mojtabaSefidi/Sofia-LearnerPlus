@@ -64,14 +64,16 @@ async function processNewCommit(commitSha) {
       activity_type: 'commit',
       activity_id: commitSha,
       contribution_date: new Date(commitInfo.date),
+      lines_added: fileChange.linesAdded || 0,
+      lines_deleted: fileChange.linesDeleted || 0,
       lines_modified: fileChange.linesModified || 0
     });
   }
 }
 
 async function processMergedPR(pr) {
-  // Get PR files from GitHub API
-  const token = process.env.GITHUB_TOKEN;
+  const token = process.env.GITHUB_TOKEN || core.getInput('github-token') || core.getInput('token');
+  
   if (!token) {
     console.warn('⚠️ No GitHub token available, skipping PR file analysis');
     return;
@@ -122,6 +124,8 @@ async function processMergedPR(pr) {
           activity_type: 'review',
           activity_id: pr.number.toString(),
           contribution_date: new Date(review.submitted_at),
+          lines_added: 0,
+          lines_deleted: 0,
           lines_modified: fileLinesModified,
           pr_number: pr.number
         });
@@ -280,14 +284,24 @@ function parseCommitInfo(commitOutput) {
   // Combine numstat and name-status data
   namestatLines.forEach((nameLine, index) => {
     const [status, path] = nameLine.split('\t');
+    let linesAdded = 0;
+    let linesDeleted = 0;
     let linesModified = 0;
     
     if (numstatLines[index]) {
-      const [additions, deletions] = numstatLines[index].split('\t');
-      linesModified = (parseInt(additions) || 0) + (parseInt(deletions) || 0);
+      const parts = numstatLines[index].split('\t');
+      linesAdded = parseInt(parts[0]) || 0;
+      linesDeleted = parseInt(parts[1]) || 0;
+      linesModified = linesAdded + linesDeleted;
     }
     
-    files.push({ status, path, linesModified });
+    files.push({ 
+      status, 
+      path, 
+      linesAdded,
+      linesDeleted,
+      linesModified 
+    });
   });
   
   return {
