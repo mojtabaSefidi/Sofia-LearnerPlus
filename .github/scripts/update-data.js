@@ -48,13 +48,16 @@ async function processPullRequestEvent(context) {
 
 async function processNewCommit(commitSha) {
   const commit = await git.show([commitSha, '--name-status', '--numstat', '--format=fuller']);
+  const files = parseGitShowOutputWithLines(commit);
+  
+  // Get commit info for author and date
   const commitInfo = parseCommitInfo(commit);
   
   // Get or create contributor
   const contributor = await getOrCreateContributor(commitInfo.author);
   
   // Process files
-  for (const fileChange of commitInfo.files) {
+  for (const fileChange of files) {
     const file = await getOrCreateFile(fileChange.path);
     
     // Record contribution with lines modified
@@ -64,9 +67,9 @@ async function processNewCommit(commitSha) {
       activity_type: 'commit',
       activity_id: commitSha,
       contribution_date: new Date(commitInfo.date),
-      lines_added: fileChange.linesAdded || 0,
-      lines_deleted: fileChange.linesDeleted || 0,
-      lines_modified: fileChange.linesModified || 0
+      lines_added: fileChange.linesAdded,
+      lines_deleted: fileChange.linesDeleted,
+      lines_modified: fileChange.linesModified
     });
   }
 }
@@ -313,6 +316,51 @@ function parseCommitInfo(commitOutput) {
     date: dateLine.replace('AuthorDate: ', ''),
     files
   };
+}
+
+function parseGitShowOutputWithLines(output) {
+  const lines = output.split('\n').filter(line => line.trim());
+  const files = [];
+  
+  // Parse numstat lines (additions deletions filename)
+  const numstatLines = lines.filter(line => line.match(/^\d+\t\d+\t/) || line.match(/^-\t-\t/));
+  const namestatLines = lines.filter(line => line.match(/^[AMDRT]/));
+  
+  // Combine numstat and name-status data
+  namestatLines.forEach((nameLine, index) => {
+    const parts = nameLine.split('\t');
+    const status = parts[0];
+    let file = parts[1];
+    let oldFile = null;
+    let linesAdded = 0;
+    let linesDeleted = 0;
+    let linesModified = 0;
+    
+    // Handle rename/copy cases
+    if (status.startsWith('R') || status.startsWith('C')) {
+      oldFile = parts[1];
+      file = parts[2];
+    }
+    
+    // Get line changes from numstat
+    if (numstatLines[index]) {
+      const numstatParts = numstatLines[index].split('\t');
+      linesAdded = numstatParts[0] === '-' ? 0 : parseInt(numstatParts[0]) || 0;
+      linesDeleted = numstatParts[1] === '-' ? 0 : parseInt(numstatParts[1]) || 0;
+      linesModified = linesAdded + linesDeleted;
+    }
+    
+    files.push({
+      status: status[0],
+      path: file,
+      oldFile: oldFile,
+      linesAdded: linesAdded,
+      linesDeleted: linesDeleted,
+      linesModified: linesModified
+    });
+  });
+  
+  return files;
 }
 
 // Run if called directly
