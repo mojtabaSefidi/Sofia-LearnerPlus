@@ -47,7 +47,12 @@ async function processPullRequestEvent(context) {
 }
 
 async function processNewCommit(commitSha) {
-  const commit = await git.show([commitSha, '--name-status', '--numstat', '--format=fuller']);
+  // Use separate commands like in the working initialize-repo.js
+  const nameStatus = await git.show([commitSha, '--name-status', '--format=']);
+  const numStat = await git.show([commitSha, '--numstat', '--format=']);
+  const commitDetails = await git.show([commitSha, '--format=fuller']);
+  const commit = numStat + '\n' + nameStatus + '\n' + commitDetails;
+  
   const files = parseGitShowOutputWithLines(commit);
   
   // Get commit info for author and date
@@ -58,7 +63,7 @@ async function processNewCommit(commitSha) {
   
   // Process files
   for (const fileChange of files) {
-    const file = await getOrCreateFile(fileChange.path);
+    const file = await getOrCreateFile(fileChange.file);
     
     // Record contribution with lines modified
     await recordContribution({
@@ -233,7 +238,7 @@ async function getOrCreateFile(path) {
   const { data: existing } = await supabase
     .from('files')
     .select('*')
-    .eq('current_path', path)
+    .eq('canonical_path', path)
     .single();
     
   if (existing) return existing;
