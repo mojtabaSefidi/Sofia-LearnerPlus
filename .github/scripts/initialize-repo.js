@@ -419,9 +419,25 @@ async function insertContributionsWithDeduplicatedIds(contributions, originalCon
 
 async function processCommit(commit, contributorMap, fileMap, contributions) {
   try {
+    console.log(`🔍 Processing commit ${commit.hash.substring(0, 8)} by ${commit.author_name}`);
+    
     // Get commit details with proper format including line changes
-    const show = await git.show([commit.hash, '--name-status', '--numstat', '--format=', '--no-merges']);
+    const gitCommand = [commit.hash, '--name-status', '--numstat', '--format='];
+    console.log(`🔧 Executing git show with args: ${gitCommand.join(' ')}`);
+    
+    const show = await git.show(gitCommand);
+    
+    console.log(`📄 Raw git show output for ${commit.hash.substring(0, 8)}:`);
+    console.log('--- START RAW OUTPUT ---');
+    console.log(show);
+    console.log('--- END RAW OUTPUT ---');
+    
     const files = parseGitShowOutputWithLines(show);
+    
+    console.log(`📊 Parsed ${files.length} files from commit ${commit.hash.substring(0, 8)}:`);
+    files.forEach((file, index) => {
+      console.log(`  File ${index + 1}: ${file.file} (status: ${file.status}, +${file.linesAdded}, -${file.linesDeleted}, total: ${file.linesModified})`);
+    });
     
     // Process contributor
     const contributor = await getOrCreateContributor(commit, contributorMap);
@@ -430,8 +446,7 @@ async function processCommit(commit, contributorMap, fileMap, contributions) {
     for (const fileChange of files) {
       const file = await getOrCreateFile(fileChange, fileMap);
       
-      // Record contribution with lines modified
-      contributions.push({
+      const contribution = {
         contributor_email: contributor.email,
         contributor_canonical_name: contributor.canonical_name,
         file_path: file.canonical_path,
@@ -441,64 +456,110 @@ async function processCommit(commit, contributorMap, fileMap, contributions) {
         lines_added: fileChange.linesAdded || 0,
         lines_deleted: fileChange.linesDeleted || 0,
         lines_modified: fileChange.linesModified || 0
-      });
+      };
+      
+      console.log(`✏️ Adding contribution: ${file.canonical_path} (+${contribution.lines_added}, -${contribution.lines_deleted}, total: ${contribution.lines_modified})`);
+      
+      contributions.push(contribution);
     }
+    
+    if (files.length === 0) {
+      console.warn(`⚠️ No files found for commit ${commit.hash.substring(0, 8)}`);
+    }
+    
   } catch (error) {
     console.warn(`⚠️ Could not process commit ${commit.hash}: ${error.message}`);
+    console.error(error.stack);
   }
 }
 
 function parseGitShowOutputWithLines(output) {
+  console.log(`🔧 Parsing git show output (${output.length} characters)`);
+  
   const lines = output.split('\n').filter(line => line.trim());
+  console.log(`📝 Found ${lines.length} non-empty lines`);
+  
   const files = [];
   
+  // Parse numstat lines (additions deletions filename)
   const numstatLines = lines.filter(line => line.match(/^\d+\t\d+\t/) || line.match(/^-\t-\t/));
   const namestatLines = lines.filter(line => line.match(/^[AMDRT]/));
   
+  console.log(`📈 Found ${numstatLines.length} numstat lines:`);
+  numstatLines.forEach((line, index) => {
+    console.log(`  Numstat ${index + 1}: "${line}"`);
+  });
+  
+  console.log(`📋 Found ${namestatLines.length} namestat lines:`);
+  namestatLines.forEach((line, index) => {
+    console.log(`  Namestat ${index + 1}: "${line}"`);
+  });
+  
+  // Create maps to properly match files by filename
   const numstatMap = new Map();
   const namestatMap = new Map();
   
-  numstatLines.forEach(line => {
+  // Process numstat lines
+  numstatLines.forEach((line, index) => {
     const parts = line.split('\t');
+    console.log(`🔢 Processing numstat line ${index + 1}: [${parts.join(', ')}]`);
+    
     if (parts.length >= 3) {
       const filename = parts[2];
       const linesAdded = parts[0] === '-' ? 0 : parseInt(parts[0]) || 0;
       const linesDeleted = parts[1] === '-' ? 0 : parseInt(parts[1]) || 0;
+      
+      console.log(`  📊 File: ${filename}, Added: ${linesAdded}, Deleted: ${linesDeleted}`);
+      
       numstatMap.set(filename, { linesAdded, linesDeleted });
+    } else {
+      console.warn(`  ⚠️ Invalid numstat line format: "${line}"`);
     }
   });
   
-  namestatLines.forEach(line => {
+  // Process name-status lines
+  namestatLines.forEach((line, index) => {
     const parts = line.split('\t');
+    console.log(`📂 Processing namestat line ${index + 1}: [${parts.join(', ')}]`);
+    
     const status = parts[0];
     let file, oldFile = null;
     
     if (status.startsWith('R') || status.startsWith('C')) {
       oldFile = parts[1];
       file = parts[2];
+      console.log(`  🔄 Rename/Copy: ${oldFile} -> ${file} (status: ${status})`);
     } else {
       file = parts[1];
+      console.log(`  📄 Regular file: ${file} (status: ${status})`);
     }
     
     namestatMap.set(file, { status: status[0], oldFile });
   });
   
+  // Combine the data by matching filenames
   const allFiles = new Set([...numstatMap.keys(), ...namestatMap.keys()]);
+  console.log(`🗂️ Total unique files: ${allFiles.size}`);
   
   allFiles.forEach(filename => {
     const numstat = numstatMap.get(filename) || { linesAdded: 0, linesDeleted: 0 };
     const namestat = namestatMap.get(filename) || { status: 'M', oldFile: null };
     
-    files.push({
+    const fileData = {
       status: namestat.status,
       file: filename,
       oldFile: namestat.oldFile,
       linesAdded: numstat.linesAdded,
       linesDeleted: numstat.linesDeleted,
       linesModified: numstat.linesAdded + numstat.linesDeleted
-    });
+    };
+    
+    console.log(`🎯 Final file data: ${filename} -> +${fileData.linesAdded}, -${fileData.linesDeleted}, total: ${fileData.linesModified}`);
+    
+    files.push(fileData);
   });
   
+  console.log(`✅ Parsed ${files.length} files total`);
   return files;
 }
 
