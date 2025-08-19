@@ -419,114 +419,13 @@ async function insertContributionsWithDeduplicatedIds(contributions, originalCon
 
 async function processCommit(commit, contributorMap, fileMap, contributions) {
   try {
-    console.log(`🔍 Processing commit ${commit.hash.substring(0, 8)} by ${commit.author_name}`);
+    // Use separate git commands for name-status and numstat (Method 2 - the one that works)
+    const nameStatus = await git.show([commit.hash, '--name-status', '--format=']);
+    const numStat = await git.show([commit.hash, '--numstat', '--format=']);
     
-    // Try different approaches to get line statistics
-    let files = [];
-    
-    // Method 1: Try git show with numstat
-    try {
-      const gitCommand = [commit.hash, '--name-status', '--numstat', '--format='];
-      console.log(`🔧 Method 1 - Executing git show with args: ${gitCommand.join(' ')}`);
-      
-      const show = await git.show(gitCommand);
-      console.log(`📄 Method 1 - Raw git show output for ${commit.hash.substring(0, 8)}:`);
-      console.log('--- START RAW OUTPUT ---');
-      console.log(show);
-      console.log('--- END RAW OUTPUT ---');
-      
-      files = parseGitShowOutputWithLines(show);
-      
-      // If we got files but no line stats, try other methods
-      if (files.length > 0 && files.every(f => f.linesModified === 0)) {
-        console.log(`⚠️ Method 1 returned files but no line stats, trying alternative methods...`);
-        throw new Error('No line stats from method 1');
-      }
-    } catch (method1Error) {
-      console.log(`❌ Method 1 failed: ${method1Error.message}`);
-      
-      // Method 2: Try separate commands
-      try {
-        console.log(`🔧 Method 2 - Trying separate git commands...`);
-        
-        const nameStatus = await git.show([commit.hash, '--name-status', '--format=']);
-        console.log(`📋 Name-status output: "${nameStatus}"`);
-        
-        const numStat = await git.show([commit.hash, '--numstat', '--format=']);
-        console.log(`📈 Numstat output: "${numStat}"`);
-        
-        // Combine the outputs
-        const combinedOutput = numStat + '\n' + nameStatus;
-        files = parseGitShowOutputWithLines(combinedOutput);
-        
-      } catch (method2Error) {
-        console.log(`❌ Method 2 failed: ${method2Error.message}`);
-        
-        // Method 3: Try git diff with parent
-        try {
-          console.log(`🔧 Method 3 - Trying git diff with parent...`);
-          
-          // Get parent commit
-          const parents = commit.refs ? commit.refs.split(', ') : [];
-          let parentHash = null;
-          
-          if (parents.length > 0) {
-            parentHash = parents[0];
-          } else {
-            // Try to get parent using git rev-list
-            const revList = await git.raw(['rev-list', '--parents', '-n', '1', commit.hash]);
-            const revParts = revList.trim().split(' ');
-            if (revParts.length > 1) {
-              parentHash = revParts[1];
-            }
-          }
-          
-          console.log(`👨‍👩‍👧‍👦 Parent commit: ${parentHash}`);
-          
-          if (parentHash) {
-            const diffNumstat = await git.raw(['diff', '--numstat', parentHash, commit.hash]);
-            const diffNameStatus = await git.raw(['diff', '--name-status', parentHash, commit.hash]);
-            
-            console.log(`📊 Diff numstat: "${diffNumstat}"`);
-            console.log(`📂 Diff name-status: "${diffNameStatus}"`);
-            
-            const combinedDiff = diffNumstat + '\n' + diffNameStatus;
-            files = parseGitShowOutputWithLines(combinedDiff);
-          } else {
-            console.log(`🌱 This appears to be the initial commit, trying different approach...`);
-            
-            // For initial commit, try git show with different format
-            const initialCommitStats = await git.raw(['show', '--numstat', '--name-status', '--format=', commit.hash]);
-            console.log(`🌱 Initial commit stats: "${initialCommitStats}"`);
-            files = parseGitShowOutputWithLines(initialCommitStats);
-          }
-          
-        } catch (method3Error) {
-          console.log(`❌ Method 3 failed: ${method3Error.message}`);
-          
-          // Method 4: Fallback - just get file names without stats
-          console.log(`🔧 Method 4 - Fallback to files without stats...`);
-          const nameOnly = await git.show([commit.hash, '--name-only', '--format=']);
-          const fileNames = nameOnly.split('\n').filter(line => line.trim());
-          
-          files = fileNames.map(fileName => ({
-            status: 'M',
-            file: fileName,
-            oldFile: null,
-            linesAdded: 0,
-            linesDeleted: 0,
-            linesModified: 0
-          }));
-          
-          console.log(`📁 Fallback found ${files.length} files without line stats`);
-        }
-      }
-    }
-    
-    console.log(`📊 Final parsed ${files.length} files from commit ${commit.hash.substring(0, 8)}:`);
-    files.forEach((file, index) => {
-      console.log(`  File ${index + 1}: ${file.file} (status: ${file.status}, +${file.linesAdded}, -${file.linesDeleted}, total: ${file.linesModified})`);
-    });
+    // Combine the outputs
+    const combinedOutput = numStat + '\n' + nameStatus;
+    const files = parseGitShowOutputWithLines(combinedOutput);
     
     // Process contributor
     const contributor = await getOrCreateContributor(commit, contributorMap);
@@ -535,7 +434,7 @@ async function processCommit(commit, contributorMap, fileMap, contributions) {
     for (const fileChange of files) {
       const file = await getOrCreateFile(fileChange, fileMap);
       
-      const contribution = {
+      contributions.push({
         contributor_email: contributor.email,
         contributor_canonical_name: contributor.canonical_name,
         file_path: file.canonical_path,
@@ -545,82 +444,47 @@ async function processCommit(commit, contributorMap, fileMap, contributions) {
         lines_added: fileChange.linesAdded || 0,
         lines_deleted: fileChange.linesDeleted || 0,
         lines_modified: fileChange.linesModified || 0
-      };
-      
-      console.log(`✏️ Adding contribution: ${file.canonical_path} (+${contribution.lines_added}, -${contribution.lines_deleted}, total: ${contribution.lines_modified})`);
-      
-      contributions.push(contribution);
+      });
     }
-    
-    if (files.length === 0) {
-      console.warn(`⚠️ No files found for commit ${commit.hash.substring(0, 8)}`);
-    }
-    
   } catch (error) {
     console.warn(`⚠️ Could not process commit ${commit.hash}: ${error.message}`);
-    console.error(error.stack);
   }
 }
 
 function parseGitShowOutputWithLines(output) {
-  console.log(`🔧 Parsing git show output (${output.length} characters)`);
-  
   const lines = output.split('\n').filter(line => line.trim());
-  console.log(`📝 Found ${lines.length} non-empty lines`);
-  
   const files = [];
   
   // Parse numstat lines (additions deletions filename)
   const numstatLines = lines.filter(line => line.match(/^\d+\t\d+\t/) || line.match(/^-\t-\t/));
   const namestatLines = lines.filter(line => line.match(/^[AMDRT]/));
   
-  console.log(`📈 Found ${numstatLines.length} numstat lines:`);
-  numstatLines.forEach((line, index) => {
-    console.log(`  Numstat ${index + 1}: "${line}"`);
-  });
-  
-  console.log(`📋 Found ${namestatLines.length} namestat lines:`);
-  namestatLines.forEach((line, index) => {
-    console.log(`  Namestat ${index + 1}: "${line}"`);
-  });
-  
   // Create maps to properly match files by filename
   const numstatMap = new Map();
   const namestatMap = new Map();
   
   // Process numstat lines
-  numstatLines.forEach((line, index) => {
+  numstatLines.forEach((line) => {
     const parts = line.split('\t');
-    console.log(`🔢 Processing numstat line ${index + 1}: [${parts.join(', ')}]`);
-    
     if (parts.length >= 3) {
       const filename = parts[2];
       const linesAdded = parts[0] === '-' ? 0 : parseInt(parts[0]) || 0;
       const linesDeleted = parts[1] === '-' ? 0 : parseInt(parts[1]) || 0;
-      
-      console.log(`  📊 File: ${filename}, Added: ${linesAdded}, Deleted: ${linesDeleted}`);
-      
       numstatMap.set(filename, { linesAdded, linesDeleted });
-    } else {
-      console.warn(`  ⚠️ Invalid numstat line format: "${line}"`);
     }
   });
   
   // Process name-status lines
-  namestatLines.forEach((line, index) => {
+  namestatLines.forEach((line) => {
     const parts = line.split('\t');
-    console.log(`📂 Processing namestat line ${index + 1}: [${parts.join(', ')}]`);
-    
     const status = parts[0];
     let file, oldFile = null;
     
     if (status.startsWith('R') || status.startsWith('C')) {
       oldFile = parts[1];
       file = parts[2];
-      console.log(`  🔄 Rename/Copy: ${oldFile} -> ${file} (status: ${status})`);
     } else {
       file = parts[1];
-      console.log(`  📄 Regular file: ${file} (status: ${status})`);
     }
     
     namestatMap.set(file, { status: status[0], oldFile });
@@ -628,27 +492,21 @@ function parseGitShowOutputWithLines(output) {
   
   // Combine the data by matching filenames
   const allFiles = new Set([...numstatMap.keys(), ...namestatMap.keys()]);
-  console.log(`🗂️ Total unique files: ${allFiles.size}`);
   
   allFiles.forEach(filename => {
     const numstat = numstatMap.get(filename) || { linesAdded: 0, linesDeleted: 0 };
     const namestat = namestatMap.get(filename) || { status: 'M', oldFile: null };
     
-    const fileData = {
+    files.push({
       status: namestat.status,
       file: filename,
       oldFile: namestat.oldFile,
       linesAdded: numstat.linesAdded,
       linesDeleted: numstat.linesDeleted,
       linesModified: numstat.linesAdded + numstat.linesDeleted
-    };
-    
-    console.log(`🎯 Final file data: ${filename} -> +${fileData.linesAdded}, -${fileData.linesDeleted}, total: ${fileData.linesModified}`);
-    
-    files.push(fileData);
+    });
   });
   
-  console.log(`✅ Parsed ${files.length} files total`);
   return files;
 }
 
