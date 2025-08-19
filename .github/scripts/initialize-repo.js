@@ -85,7 +85,9 @@ async function initializeRepository() {
 }
 
 async function processPullRequests() {
-  if (!process.env.GITHUB_TOKEN) {
+  const token = process.env.GITHUB_TOKEN || core.getInput('github-token') || core.getInput('token');
+  
+  if (!token) {
     console.log('⚠️ No GITHUB_TOKEN provided, skipping PR processing');
     return [];
   }
@@ -288,63 +290,6 @@ async function processPRContributions(pr, octokit, context) {
   return contributions;
 }
 
-async function processPullRequests() {
-  if (!process.env.GITHUB_TOKEN) {
-    console.log('⚠️ No GITHUB_TOKEN provided, skipping PR processing');
-    return [];
-  }
-
-  console.log('🔄 Processing pull requests...');
-  
-  try {
-    const octokit = github.getOctokit(process.env.GITHUB_TOKEN);
-    const context = github.context;
-    
-    // Get all PRs (same as before)
-    const allPRs = [];
-    let page = 1;
-    const perPage = 100;
-    
-    while (true) {
-      const { data: prs } = await octokit.rest.pulls.list({
-        owner: context.repo.owner,
-        repo: context.repo.repo,
-        state: 'all',
-        per_page: perPage,
-        page: page,
-        sort: 'created',
-        direction: 'asc'
-      });
-      
-      if (prs.length === 0) break;
-      
-      allPRs.push(...prs);
-      console.log(`📄 Fetched ${prs.length} PRs (page ${page})`);
-      page++;
-    }
-    
-    console.log(`📊 Found ${allPRs.length} total pull requests`);
-    
-    // Insert PRs into pull_requests table
-    await insertPullRequests(allPRs);
-    
-    // Process PR contributions (both file changes AND reviews go into contributions table)
-    const prContributions = [];
-    for (const pr of allPRs) {
-      const contributions = await processPRContributions(pr, octokit, context);
-      prContributions.push(...contributions);
-    }
-    
-    return prContributions;
-    
-  } catch (error) {
-    console.error('❌ Error processing pull requests:', error);
-    throw error;
-  }
-}
-
-
-
 async function insertContributionsWithDeduplicatedIds(contributions, originalContributorMap) {
   if (contributions.length === 0) return;
   
@@ -417,18 +362,34 @@ async function insertContributionsWithDeduplicatedIds(contributions, originalCon
     }
     
     if (contributorId && fileId) {
+      // Calculate lines_added and lines_deleted properly
+      let linesAdded = 0;
+      let linesDeleted = 0;
+      let totalLinesModified = contribution.lines_modified || 0;
+      
+      if (contribution.activity_type === 'commit') {
+        // For commits, we can estimate based on git numstat data if available
+        linesAdded = contribution.lines_added || Math.floor(totalLinesModified / 2);
+        linesDeleted = contribution.lines_deleted || Math.ceil(totalLinesModified / 2);
+      } else if (contribution.activity_type === 'review') {
+        // For reviews, lines_modified represents the total lines they reviewed
+        linesAdded = 0;
+        linesDeleted = 0;
+      }
+    
       mappedContributions.push({
         contributor_id: contributorId,
         file_id: fileId,
         activity_type: contribution.activity_type,
         activity_id: contribution.activity_id,
         contribution_date: contribution.contribution_date,
-        lines_added: contribution.activity_type === 'commit' ? Math.floor((contribution.lines_modified || 0) / 2) : 0,
-        lines_deleted: contribution.activity_type === 'commit' ? Math.ceil((contribution.lines_modified || 0) / 2) : 0,
-        lines_modified: contribution.lines_modified || 0,
+        lines_added: linesAdded,
+        lines_deleted: linesDeleted,
+        lines_modified: totalLinesModified,
         pr_number: contribution.pr_number || null
       });
-    } else {
+    } 
+    else {
       skippedCount++;
       if (skippedCount <= 10) {
         const identifier = contribution.contributor_email || contribution.contributor_login || 'unknown';
@@ -487,6 +448,8 @@ async function processCommit(commit, contributorMap, fileMap, contributions) {
         activity_type: 'commit',
         activity_id: commit.hash,
         contribution_date: new Date(commit.date),
+        lines_added: fileChange.linesAdded || 0,
+        lines_deleted: fileChange.linesDeleted || 0,
         lines_modified: fileChange.linesModified || 0
       });
     }
@@ -509,6 +472,8 @@ function parseGitShowOutputWithLines(output) {
     const status = parts[0];
     let file = parts[1];
     let oldFile = null;
+    let linesAdded = 0;
+    let linesDeleted = 0;
     let linesModified = 0;
     
     // Handle rename/copy cases
@@ -520,15 +485,17 @@ function parseGitShowOutputWithLines(output) {
     // Get line changes from numstat
     if (numstatLines[index]) {
       const numstatParts = numstatLines[index].split('\t');
-      const additions = numstatParts[0] === '-' ? 0 : parseInt(numstatParts[0]) || 0;
-      const deletions = numstatParts[1] === '-' ? 0 : parseInt(numstatParts[1]) || 0;
-      linesModified = additions + deletions;
+      linesAdded = numstatParts[0] === '-' ? 0 : parseInt(numstatParts[0]) || 0;
+      linesDeleted = numstatParts[1] === '-' ? 0 : parseInt(numstatParts[1]) || 0;
+      linesModified = linesAdded + linesDeleted;
     }
     
     files.push({
       status: status[0],
       file: file,
       oldFile: oldFile,
+      linesAdded: linesAdded,
+      linesDeleted: linesDeleted,
       linesModified: linesModified
     });
   });
