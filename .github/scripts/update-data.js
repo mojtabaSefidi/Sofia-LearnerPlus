@@ -96,20 +96,21 @@ async function processMergedPR(pr) {
     return total + (file.additions || 0) + (file.deletions || 0);
   }, 0);
   
+  // Collect unique reviewers (excluding PR author)
+  const reviewers = reviews
+    .filter(review => review.user.login !== pr.user.login)
+    .map(review => ({
+      login: review.user.login,
+      submitted_at: review.submitted_at
+    }))
+    .filter((reviewer, index, self) => 
+      index === self.findIndex(r => r.login === reviewer.login)
+    );
+  
   // Process each reviewer's contribution to each file
   for (const review of reviews) {
     if (review.user.login !== pr.user.login) { // Exclude PR author
       const reviewer = await getOrCreateContributorByLogin(review.user.login);
-      
-      // Record PR review performance
-      await recordPRReview({
-        pr_number: pr.number,
-        reviewer_login: review.user.login,
-        pr_opened_date: new Date(pr.created_at),
-        pr_closed_date: new Date(pr.merged_at || pr.closed_at),
-        lines_modified: totalLinesModified,
-        review_submitted_date: new Date(review.submitted_at)
-      });
       
       for (const file of files) {
         const fileRecord = await getOrCreateFile(file.filename);
@@ -128,29 +129,25 @@ async function processMergedPR(pr) {
     }
   }
   
-  // Record PR
+  // Record PR with reviewers
   const { error } = await supabase
     .from('pull_requests')
-    .insert({
+    .upsert({
       pr_number: pr.number,
       status: 'merged',
       author_login: pr.user.login,
+      reviewers: reviewers,
       created_date: new Date(pr.created_at),
       merged_date: new Date(pr.merged_at),
+      closed_date: new Date(pr.closed_at),
       lines_modified: totalLinesModified
-    });
-}
-
-// New function to record PR review performance
-async function recordPRReview(reviewData) {
-  const { error } = await supabase
-    .from('pr_reviews')
-    .insert(reviewData);
+    }, { onConflict: 'pr_number' });
     
-  if (error && !error.message.includes('duplicate')) {
-    console.warn('Error recording PR review:', error.message);
+  if (error) {
+    console.error('Error updating PR:', error);
   }
 }
+
 
 async function getOrCreateContributor(authorInfo) {
   // First try to find by GitHub login

@@ -144,15 +144,69 @@ async function insertPullRequests(prs) {
   
   console.log(`📝 Inserting ${prs.length} pull requests...`);
   
-  const prData = prs.map(pr => ({
-    pr_number: pr.number,
-    status: pr.merged_at ? 'merged' : pr.state,
-    author_login: pr.user.login,
-    created_date: new Date(pr.created_at),
-    merged_date: pr.merged_at ? new Date(pr.merged_at) : null,
-    closed_date: pr.closed_at ? new Date(pr.closed_at) : null,
-    lines_modified: 0
-  }));
+  // We need to get reviewers for each PR
+  const octokit = process.env.GITHUB_TOKEN ? github.getOctokit(process.env.GITHUB_TOKEN) : null;
+  const context = github.context;
+  
+  const prData = [];
+  
+  for (const pr of prs) {
+    let reviewers = [];
+    
+    // Get reviewers if we have GitHub token
+    if (octokit) {
+      try {
+        const { data: reviews } = await octokit.rest.pulls.listReviews({
+          owner: context.repo.owner,
+          repo: context.repo.repo,
+          pull_number: pr.number
+        });
+        
+        // Extract unique reviewers (excluding PR author)
+        reviewers = reviews
+          .filter(review => review.user.login !== pr.user.login)
+          .map(review => ({
+            login: review.user.login,
+            submitted_at: review.submitted_at
+          }))
+          .filter((reviewer, index, self) => 
+            index === self.findIndex(r => r.login === reviewer.login)
+          );
+        
+      } catch (error) {
+        console.warn(`⚠️ Could not fetch reviews for PR #${pr.number}: ${error.message}`);
+      }
+    }
+    
+    // Calculate total lines modified
+    let totalLinesModified = 0;
+    if (octokit) {
+      try {
+        const { data: files } = await octokit.rest.pulls.listFiles({
+          owner: context.repo.owner,
+          repo: context.repo.repo,
+          pull_number: pr.number
+        });
+        
+        totalLinesModified = files.reduce((total, file) => {
+          return total + (file.additions || 0) + (file.deletions || 0);
+        }, 0);
+      } catch (error) {
+        console.warn(`⚠️ Could not fetch files for PR #${pr.number}: ${error.message}`);
+      }
+    }
+    
+    prData.push({
+      pr_number: pr.number,
+      status: pr.merged_at ? 'merged' : pr.state,
+      author_login: pr.user.login,
+      reviewers: reviewers,
+      created_date: new Date(pr.created_at),
+      merged_date: pr.merged_at ? new Date(pr.merged_at) : null,
+      closed_date: pr.closed_at ? new Date(pr.closed_at) : null,
+      lines_modified: totalLinesModified
+    });
+  }
   
   const batchSize = 50;
   let totalInserted = 0;
@@ -176,31 +230,62 @@ async function insertPullRequests(prs) {
   console.log(`✅ Successfully inserted ${totalInserted} pull requests`);
 }
 
-async function insertPRReview(prReviewData) {
+async function processPRContributions(pr, octokit, context) {
+  const contributions = [];
+  
   try {
-    const { error } = await supabase
-      .from('pr_reviews')
-      .upsert({
-        pr_number: prReviewData.pr_number,
-        author_login: prReviewData.author_login,
-        reviewer_login: prReviewData.reviewer_login,
-        pr_opened_date: prReviewData.pr_opened_date,
-        pr_closed_date: prReviewData.pr_closed_date,
-        lines_modified: prReviewData.lines_modified,
-        review_submitted_date: prReviewData.review_submitted_date
-      }, { 
-        onConflict: 'pr_number,reviewer_login',
-        ignoreDuplicates: false 
-      });
+    // Get PR files
+    const { data: files } = await octokit.rest.pulls.listFiles({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      pull_number: pr.number
+    });
     
-    if (error) {
-      console.error(`Error inserting PR review for PR #${prReviewData.pr_number}:`, error);
-      throw error;
+    // Get PR reviews
+    const { data: reviews } = await octokit.rest.pulls.listReviews({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      pull_number: pr.number
+    });
+    
+    // Calculate total lines modified in PR
+    const totalLinesModified = files.reduce((total, file) => {
+      return total + (file.additions || 0) + (file.deletions || 0);
+    }, 0);
+    
+    // Collect unique reviewers (excluding PR author)
+    const reviewers = reviews
+      .filter(review => review.user.login !== pr.user.login)
+      .map(review => ({
+        login: review.user.login,
+        submitted_at: review.submitted_at
+      }))
+      .filter((reviewer, index, self) => 
+        index === self.findIndex(r => r.login === reviewer.login)
+      );
+    
+    // Process each file for each reviewer
+    for (const reviewer of reviewers) {
+      for (const file of files) {
+        const fileLinesModified = (file.additions || 0) + (file.deletions || 0);
+        
+        contributions.push({
+          contributor_login: reviewer.login,
+          file_path: file.filename,
+          activity_type: 'review',
+          activity_id: pr.number.toString(),
+          contribution_date: new Date(reviewer.submitted_at),
+          lines_modified: fileLinesModified,
+          pr_number: pr.number
+        });
+      }
     }
+    
   } catch (error) {
-    console.error(`Failed to insert PR review data:`, error);
-    throw error;
+    console.warn(`⚠️ Could not process PR #${pr.number} contributions: ${error.message}`);
   }
+  
+  return contributions;
 }
 
 async function processPullRequests() {
