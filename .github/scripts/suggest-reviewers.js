@@ -388,7 +388,8 @@ No developers found with prior experience on these files. Consider assigning rev
 `;
 
 
-📊 Additional Metrics & Activity Timeline
+<details>
+<summary>📊 Additional Metrics & Activity Timeline</summary>
 
 ### Activity Timeline
 | Developer | LastCommit | LastModPR | L-Commits | L-Reviews | G-Commits | G-Reviews | A-Months |
