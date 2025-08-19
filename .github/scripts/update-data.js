@@ -63,7 +63,7 @@ async function processNewCommit(commitSha) {
   
   // Process files
   for (const fileChange of files) {
-    const file = await getOrCreateFile(fileChange.file);
+    const file = await getOrCreateFile(fileChange.filename);
     
     // Record contribution with lines modified
     await recordContribution({
@@ -305,7 +305,7 @@ function parseCommitInfo(commitOutput) {
     
     files.push({ 
       status, 
-      path, 
+      filename: path, 
       linesAdded,
       linesDeleted,
       linesModified 
@@ -357,7 +357,7 @@ function parseGitShowOutputWithLines(output) {
     
     files.push({
       status: status[0],
-      path: file,
+      filename: file,
       oldFile: oldFile,
       linesAdded: linesAdded,
       linesDeleted: linesDeleted,
