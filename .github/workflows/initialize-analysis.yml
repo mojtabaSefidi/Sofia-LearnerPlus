@@ -18,6 +18,7 @@ jobs:
       pull-requests: read
       issues: read
       repository-projects: read
+      actions: read
 
     steps:
       - name: Checkout Repository
@@ -49,6 +50,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FORCE_REINIT: ${{ github.event.inputs.force_reinit }}
         run: |
           cd .github
