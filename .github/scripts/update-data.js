@@ -235,25 +235,43 @@ async function getOrCreateContributorByLogin(login) {
 }
 
 async function getOrCreateFile(path) {
-  const { data: existing } = await supabase
+  // Defensive: ensure path is a non-empty string
+  if (!path || typeof path !== 'string' || path.trim() === '') {
+    console.error('getOrCreateFile called with empty/falsy path:', JSON.stringify(path));
+    // Return null so caller can decide what to do (and avoid inserting bad rows)
+    return null;
+  }
+
+  const canonical = path.trim();
+
+  // Check existing by canonical_path (your schema)
+  const { data: existing, error: selectError } = await supabase
     .from('files')
     .select('*')
-    .eq('canonical_path', path)
+    .eq('canonical_path', canonical)
     .single();
-    
+
+  if (selectError && selectError.code !== 'PGRST116') {
+    // PGRST116 is a "No rows found" in some versions; log otherwise
+    console.debug('getOrCreateFile: select error (non-fatal):', selectError);
+  }
   if (existing) return existing;
-  
-  // Create new file
+
+  // Create new file record
   const { data: newFile, error } = await supabase
     .from('files')
     .insert({
-      canonical_path: path,
-      current_path: path
+      canonical_path: canonical,
+      current_path: canonical
     })
     .select()
     .single();
-    
-  if (error) throw error;
+
+  if (error) {
+    console.error('getOrCreateFile: failed to insert file', { canonical, error });
+    throw error;
+  }
+  console.debug('getOrCreateFile: created file', { id: newFile.id, path: canonical });
   return newFile;
 }
 
@@ -324,39 +342,65 @@ function parseCommitInfo(commitOutput) {
 }
 
 function parseGitShowOutputWithLines(output) {
-  const lines = output.split('\n').filter(line => line.trim());
+  const lines = output.split('\n'); // keep blanks for debug
   const files = [];
-  
-  // Parse numstat lines (additions deletions filename)
+
+  // numstat lines look like: "12\t3\tpath" or "-\t-\tpath"
   const numstatLines = lines.filter(line => line.match(/^\d+\t\d+\t/) || line.match(/^-\t-\t/));
-  const namestatLines = lines.filter(line => line.match(/^[AMDRT]/));
-  
-  // Combine numstat and name-status data
+
+  // name-status lines should start with a status token then a TAB.
+  // Examples:
+  //  A\tpath
+  //  M\tpath
+  //  R100\told\tnew
+  //  C100\told\tnew
+  // Require a tab to avoid picking up "Author:" lines etc.
+  const namestatLines = lines.filter(line => line.match(/^[A-Z]+\d*\t/));
+
+  // Debug: if anything unexpected appears, log a compact summary
+  if (namestatLines.length === 0 && numstatLines.length === 0) {
+    console.debug('parseGitShowOutputWithLines: no numstat or name-status lines found. Full output preview (first 40 lines):');
+    console.debug(lines.slice(0, 40).map((l, i) => `${i+1}: ${l}`));
+  }
+
   namestatLines.forEach((nameLine, index) => {
     const parts = nameLine.split('\t');
-    const status = parts[0];
+    const statusRaw = parts[0] || '';
+    const status = statusRaw[0] || '';
     let file = parts[1];
     let oldFile = null;
     let linesAdded = 0;
     let linesDeleted = 0;
     let linesModified = 0;
-    
-    // Handle rename/copy cases
-    if (status.startsWith('R') || status.startsWith('C')) {
+
+    // Handle rename/copy cases where there are 3 parts: status, old, new
+    if (statusRaw.startsWith('R') || statusRaw.startsWith('C')) {
       oldFile = parts[1];
       file = parts[2];
     }
-    
-    // Get line changes from numstat
+
+    // Get line changes from numstat if present at same index
     if (numstatLines[index]) {
       const numstatParts = numstatLines[index].split('\t');
       linesAdded = numstatParts[0] === '-' ? 0 : parseInt(numstatParts[0]) || 0;
       linesDeleted = numstatParts[1] === '-' ? 0 : parseInt(numstatParts[1]) || 0;
       linesModified = linesAdded + linesDeleted;
     }
-    
+
+    // Defensive: if file is falsy (undefined/null/empty), log context for debugging
+    if (!file) {
+      console.warn('parseGitShowOutputWithLines: parsed empty file path.', {
+        nameLine,
+        index,
+        statusRaw,
+        numstatLine: numstatLines[index] || null
+      });
+      // Skip adding an entry with an empty path
+      return;
+    }
+
     files.push({
-      status: status[0],
+      status: status,
       path: file,
       oldFile: oldFile,
       linesAdded: linesAdded,
@@ -364,7 +408,7 @@ function parseGitShowOutputWithLines(output) {
       linesModified: linesModified
     });
   });
-  
+
   return files;
 }
 
