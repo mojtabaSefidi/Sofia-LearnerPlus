@@ -323,19 +323,19 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
 | File | Change Type | Developers | Top Contributor |
 |------|-------------|------------|-----------------|
 `;
-  
+
   // Categorize files
   const abandonedFiles = [];
   const hoardedFiles = [];
-  
+
   fileAnalysis.forEach(file => {
     let topContribText = 'None (New file)';
     if (!file.isNew && file.topContributor) {
       topContribText = `@${file.topContributor.login} (${file.topContributor.commits}c/${file.topContributor.reviews}r)`;
     }
-    
+
     comment += `| \`${file.filename}\` | ${file.changeType} | ${file.developerCount} | ${topContribText} |\n`;
-    
+
     // Categorize files
     if (file.developerCount === 0) {
       abandonedFiles.push(file.filename);
@@ -346,7 +346,7 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
       });
     }
   });
-  
+
   // Add enhanced reviewer suggestions with LEARNS column
   if (reviewerMetrics.length === 0) {
     comment += `\n### 👥 Reviewer Suggestions
@@ -358,21 +358,25 @@ No developers found with prior experience on these files. Consider assigning rev
   } else {
     comment += `\n### 👥 Reviewer Candidates
 
-| Developer | Knows | Learns | WorkloadShare% | PercentileRank% | Relative To Mean% | ΔGiniWorkload(Absolute)  | AvgTime(h) | AvgSize(line) | line/hour | LastReview     | LastReviewOnPRFile |
-|-----------|-------|--------|----------------|-----------------|-------------------|--------------------------|------------|---------------|-----------|----------------|--------------------|
+| Developer | Knows | Learns | WorkloadShare% | PercentileRank% | Relative To Mean% | ΔGiniWorkload(Absolute) | AvgTime(h) | AvgSize(line) | line/hour | LastReview | LastReviewOnPRFile |
+|-----------|-------|--------|----------------|-----------------|-------------------|-------------------------|------------|---------------|-----------|------------|--------------------|
 `;
 
+    // helpers
+    const formatDate = (dateStr) => {
+      const d = new Date(dateStr);
+      return dateStr && !isNaN(d)
+        ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : 'N/A';
+    };
+
+    const formatNumber = (num, decimals = 1) =>
+      typeof num === 'number' && !isNaN(num) ? num.toFixed(decimals) : '0.0';
+
     reviewerMetrics.forEach(metrics => {
-      const formatDate = (dateStr) => 
-        dateStr 
-          ? new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) 
-          : 'N/A';
-      const formatNumber = (num, decimals = 1) => 
-        typeof num === 'number' ? num.toFixed(decimals) : '0.0';
-      
       comment += `| @${metrics.login} | ${metrics.knows} | ${metrics.learns} | ${formatNumber(metrics.workloadShare)} | ${formatNumber(metrics.percentileRank)} | ${formatNumber(metrics.relativeToMean)} | ${formatNumber(metrics.giniWorkload)} | ${formatNumber(metrics.avgReviewTimeHours)} | ${Math.round(metrics.avgReviewSizeLines)} | ${formatNumber(metrics.linesPerHour)} | ${formatDate(metrics.lastReviewDate)} | ${formatDate(metrics.lastReviewInPRFiles)} |\n`;
     });
-    
+
     comment += `\n**Legend:**
 - **Knows**: Files in this PR the reviewer has worked on before  
 - **Learns**: Files in this PR new to the reviewer (${filePaths.length} total - Knows)  
@@ -387,8 +391,9 @@ No developers found with prior experience on these files. Consider assigning rev
 - **LastReviewOnPRFile**: Date of last review on any file in this PR  
 `;
 
-
-📊 Additional Metrics & Activity Timeline
+    // Additional metrics section
+    comment += `<details>
+<summary>📊 Additional Metrics & Activity Timeline</summary>
 
 ### Activity Timeline
 | Developer | LastCommit | LastModPR | L-Commits | L-Reviews | G-Commits | G-Reviews | A-Months |
@@ -396,12 +401,6 @@ No developers found with prior experience on these files. Consider assigning rev
 `;
 
     reviewerMetrics.forEach(metrics => {
-      const formatDate = (dateStr) => 
-        dateStr 
-          ? new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) 
-          : 'N/A';
-
-      
       comment += `| @${metrics.login} | ${formatDate(metrics.lastCommitDate)} | ${formatDate(metrics.lastModificationInPRFiles)} | ${metrics.lCommits} | ${metrics.lReviews} | ${metrics.gCommits} | ${metrics.gReviews} | ${metrics.aMonths} |\n`;
     });
 
@@ -427,13 +426,13 @@ No developers found with prior experience on these files. Consider assigning rev
 //       }
 //     });
     
-//     comment += `</details>`;
-//   }
+    comment += `</details>`;
+  }
   
-//   comment += `\n---
-// *This enhanced analysis includes workload distribution metrics and performance indicators from the last quarter (3 months). Workload metrics help ensure fair distribution of review responsibilities across the team.*
+  comment += `\n---
+*This enhanced analysis includes workload distribution metrics and performance indicators from the last quarter (3 months). Workload metrics help ensure fair distribution of review responsibilities across the team.*
 
-// *Generated for PR by @${prAuthor}*`;
+*Generated for PR by @${prAuthor}*`;
   
   return comment;
 }
