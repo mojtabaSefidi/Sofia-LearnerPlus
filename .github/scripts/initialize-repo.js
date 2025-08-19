@@ -420,7 +420,7 @@ async function insertContributionsWithDeduplicatedIds(contributions, originalCon
 async function processCommit(commit, contributorMap, fileMap, contributions) {
   try {
     // Get commit details with proper format including line changes
-    const show = await git.show([commit.hash, '--name-status', '--numstat', '--format=']);
+    const show = await git.show([commit.hash, '--name-status', '--numstat', '--format=', '--no-merges']);
     const files = parseGitShowOutputWithLines(show);
     
     // Process contributor
@@ -452,48 +452,57 @@ function parseGitShowOutputWithLines(output) {
   const lines = output.split('\n').filter(line => line.trim());
   const files = [];
   
-  // Parse numstat lines (additions deletions filename)
   const numstatLines = lines.filter(line => line.match(/^\d+\t\d+\t/) || line.match(/^-\t-\t/));
   const namestatLines = lines.filter(line => line.match(/^[AMDRT]/));
   
-  // Combine numstat and name-status data
-  namestatLines.forEach((nameLine, index) => {
-    const parts = nameLine.split('\t');
+  const numstatMap = new Map();
+  const namestatMap = new Map();
+  
+  numstatLines.forEach(line => {
+    const parts = line.split('\t');
+    if (parts.length >= 3) {
+      const filename = parts[2];
+      const linesAdded = parts[0] === '-' ? 0 : parseInt(parts[0]) || 0;
+      const linesDeleted = parts[1] === '-' ? 0 : parseInt(parts[1]) || 0;
+      numstatMap.set(filename, { linesAdded, linesDeleted });
+    }
+  });
+  
+  namestatLines.forEach(line => {
+    const parts = line.split('\t');
     const status = parts[0];
-    let file = parts[1];
-    let oldFile = null;
-    let linesAdded = 0;
-    let linesDeleted = 0;
-    let linesModified = 0;
+    let file, oldFile = null;
     
-    // Handle rename/copy cases
     if (status.startsWith('R') || status.startsWith('C')) {
       oldFile = parts[1];
       file = parts[2];
+    } else {
+      file = parts[1];
     }
     
-    // Get line changes from numstat
-    if (numstatLines[index]) {
-      const numstatParts = numstatLines[index].split('\t');
-      linesAdded = numstatParts[0] === '-' ? 0 : parseInt(numstatParts[0]) || 0;
-      linesDeleted = numstatParts[1] === '-' ? 0 : parseInt(numstatParts[1]) || 0;
-      linesModified = linesAdded + linesDeleted;
-    }
+    namestatMap.set(file, { status: status[0], oldFile });
+  });
+  
+  const allFiles = new Set([...numstatMap.keys(), ...namestatMap.keys()]);
+  
+  allFiles.forEach(filename => {
+    const numstat = numstatMap.get(filename) || { linesAdded: 0, linesDeleted: 0 };
+    const namestat = namestatMap.get(filename) || { status: 'M', oldFile: null };
     
     files.push({
-      status: status[0],
-      file: file,
-      oldFile: oldFile,
-      linesAdded: linesAdded,
-      linesDeleted: linesDeleted,
-      linesModified: linesModified
+      status: namestat.status,
+      file: filename,
+      oldFile: namestat.oldFile,
+      linesAdded: numstat.linesAdded,
+      linesDeleted: numstat.linesDeleted,
+      linesModified: numstat.linesAdded + numstat.linesDeleted
     });
   });
   
   return files;
 }
 
-// FIXED: Enhanced contributor resolution with better GitHub username detection
+
 async function getOrCreateContributor(commit, contributorMap) {
   const email = commit.author_email;
   const name = commit.author_name;
