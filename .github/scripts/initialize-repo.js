@@ -363,18 +363,9 @@ async function insertContributionsWithDeduplicatedIds(contributions, originalCon
     
     if (contributorId && fileId) {
       // Calculate lines_added and lines_deleted properly
-      let linesAdded = 0;
-      let linesDeleted = 0;
+      let linesAdded = contribution.lines_added || 0;
+      let linesDeleted = contribution.lines_deleted || 0;
       let totalLinesModified = contribution.lines_modified || 0;
-      
-      if (contribution.activity_type === 'commit') {
-        // For commits, we can estimate based on git numstat data if available
-        linesAdded = contribution.lines_added || Math.floor(totalLinesModified / 2);
-        linesDeleted = contribution.lines_deleted || Math.ceil(totalLinesModified / 2);
-      } else if (contribution.activity_type === 'review') {
-        // For reviews, lines_modified represents the total lines they reviewed
-        linesAdded = 0;
-        linesDeleted = 0;
       }
     
       mappedContributions.push({
