@@ -23,7 +23,7 @@ Before installing RelationalGit, you need to install the following dependencies.
 You need to get the latest bits on [.NET Core](https://www.microsoft.com/net/download).
 
 ## 2) SQL Server
-**Cross-Platform**: Download the [SQL Server Docker image](https://docs.microsoft.com/en-us/sql/linux/quickstart-install-connect-docker?view=sql-server-linux-2017) to run it natively on your system. Then you need to install [Microsoft SQL Operation Studio](https://docs.microsoft.com/en-us/sql/sql-operations-studio/download) or [SQLCMD](https://docs.microsoft.com/en-us/sql/linux/sql-server-linux-setup-tools?view=sql-server-linux-2017) to query the database. On Windows, you can install [Sql Server Management Studio](https://docs.microsoft.com/en-us/sql/ssms/download-sql-server-management-studio-ssms) to query the database.
+**Cross-Platform**: Download the [SQL Server Docker image](https://docs.microsoft.com/en-us/sql/linux/quickstart-install-connect-docker?view=sql-server-linux-2017) to run it natively on your system. Then you need to install [Microsoft SQL Operation Studio](https://docs.microsoft.com/en-us/sql/sql-operations-studio/download) or [SQLCMD](https://docs.microsoft.com/en-us/sql/linux/sql-server-linux-setup-tools?view=sql-server-linux-2017) to query the database. On Windows, you can install [SQL Server Management Studio](https://docs.microsoft.com/en-us/sql/ssms/download-sql-server-management-studio-ssms) to query the database.
 
 **Windows**: You can download SQL Server - [LocalDb, Express, and Developer Editions](https://www.microsoft.com/en-ca/sql-server/sql-server-downloads) - and [SQL Server Management Studio](https://docs.microsoft.com/en-us/sql/ssms/download-sql-server-management-studio-ssms) free of charge.
 
@@ -47,5 +47,5 @@ dotnet tool install --global SofiaWL-LearnerPlusPlus --version 1.1.2
 For replication steps and running simulations, read the [README File](ReplicationPackage/README.md) in the _ReplicationPackage_ directory.
 
 ---
-If you have any issues, do not hesitate to contact us.
+If you encounter any issues, please don't hesitate to contact us.
 
