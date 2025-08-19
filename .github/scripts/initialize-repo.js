@@ -366,7 +366,6 @@ async function insertContributionsWithDeduplicatedIds(contributions, originalCon
       let linesAdded = contribution.lines_added || 0;
       let linesDeleted = contribution.lines_deleted || 0;
       let totalLinesModified = contribution.lines_modified || 0;
-      }
     
       mappedContributions.push({
         contributor_id: contributorId,
