@@ -32,7 +32,7 @@ namespace RelationalGit.Recommendation
             _pullRequestReviewerSelectionStrategy = pullRequestReviewerSelectionStrategy;
         }
 
-        private (double Alpha,double Beta,int RiskOwenershipThreshold,double HoarderRatio) GetParameters(string recommenderOption)
+        private (double Alpha, double Beta, int RiskOwenershipThreshold, double HoarderRatio) GetParameters(string recommenderOption)
         {
             if (string.IsNullOrEmpty(recommenderOption))
                 return (0.5, 1,3,0.7);
