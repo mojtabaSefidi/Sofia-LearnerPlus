@@ -20,7 +20,7 @@ namespace RelationalGit.Recommendation
             string pullRequestReviewerSelectionStrategy,
             bool? addOnlyToUnsafePullrequests,
             string recommenderOption, bool changePast, string simulationType)
-            : base(knowledgeSaveReviewerReplacementType, logger,pullRequestReviewerSelectionStrategy,addOnlyToUnsafePullrequests, recommenderOption,changePast, simulationType)
+            : base(knowledgeSaveReviewerReplacementType, logger, pullRequestReviewerSelectionStrategy, addOnlyToUnsafePullrequests, recommenderOption,changePast, simulationType)
         {
             _numberOfPeriodsForCalculatingProbabilityOfStay = numberOfPeriodsForCalculatingProbabilityOfStay;
 
@@ -43,7 +43,7 @@ namespace RelationalGit.Recommendation
             var riskOwenershipThreshold = options.FirstOrDefault(q => q.StartsWith("risk")).Substring("risk".Length + 1);
             var hoarderRatioOption = options.FirstOrDefault(q => q.StartsWith("hoarder_ratio")).Substring("hoarder_ratio".Length + 1);
 
-            return (double.Parse(alphaOption), double.Parse(betaOption),int.Parse(riskOwenershipThreshold),double.Parse(hoarderRatioOption));
+            return (double.Parse(alphaOption), double.Parse(betaOption), int.Parse(riskOwenershipThreshold), double.Parse(hoarderRatioOption));
         }
 
         internal override double ComputeReviewerScore(PullRequestContext pullRequestContext, DeveloperKnowledge reviewer)
