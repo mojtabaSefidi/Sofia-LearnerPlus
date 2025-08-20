@@ -40,7 +40,7 @@ namespace RelationalGit.Recommendation
             var betaOption = options.FirstOrDefault(q => q.StartsWith("beta")).Substring("beta".Length + 1);
             var hoarderRatioOption = options.FirstOrDefault(q => q.StartsWith("hoarder_ratio")).Substring("hoarder_ratio".Length + 1);
 
-            return (double.Parse(alphaOption), double.Parse(betaOption),double.Parse(hoarderRatioOption));
+            return (double.Parse(alphaOption), double.Parse(betaOption), double.Parse(hoarderRatioOption));
         }
 
         internal override double ComputeReviewerScore(PullRequestContext pullRequestContext, DeveloperKnowledge reviewer)
