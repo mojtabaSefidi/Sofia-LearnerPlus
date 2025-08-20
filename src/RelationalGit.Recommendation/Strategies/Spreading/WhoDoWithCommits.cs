@@ -151,4 +151,3 @@ namespace RelationalGit.Recommendation
         }
     }
 }
-
