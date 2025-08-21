@@ -107,7 +107,7 @@ async function processPullRequests() {
       const { data: prs } = await octokit.rest.pulls.list({
         owner: context.repo.owner,
         repo: context.repo.repo,
-        state: 'all', // Get all PRs regardless of state
+        state: 'all',
         per_page: perPage,
         page: page,
         sort: 'created',
@@ -128,9 +128,19 @@ async function processPullRequests() {
     
     // Process PR contributions (reviews and comments)
     const prContributions = [];
+    const allComments = []; // NEW: Collect all comments
+    
     for (const pr of allPRs) {
       const contributions = await processPRContributions(pr, octokit, context);
+      const comments = await processPRComments(pr, octokit, context); // NEW: Get comments
       prContributions.push(...contributions);
+      allComments.push(...comments); // NEW: Collect comments
+    }
+    
+    // NEW: Insert review comments
+    if (allComments.length > 0) {
+      console.log(`💬 Processing ${allComments.length} review comments...`);
+      await insertReviewComments(allComments);
     }
     
     return prContributions;
@@ -140,6 +150,79 @@ async function processPullRequests() {
     throw error;
   }
 }
+
+async function insertReviewComments(comments) {
+  if (comments.length === 0) return;
+  
+  console.log(`💬 Inserting ${comments.length} review comments...`);
+  
+  // Get contributors to map logins to IDs
+  const { data: dbContributors, error: contributorError } = await supabase
+    .from('contributors')
+    .select('id, github_login');
+    
+  if (contributorError) {
+    console.error('Error fetching contributors for comments:', contributorError);
+    throw contributorError;
+  }
+  
+  const contributorLookup = new Map();
+  dbContributors.forEach(c => {
+    contributorLookup.set(c.github_login.toLowerCase(), c.id);
+  });
+  
+  // Map comments to database format
+  const mappedComments = [];
+  let skippedCount = 0;
+  
+  for (const comment of comments) {
+    const contributorId = contributorLookup.get(comment.contributor_login.toLowerCase());
+    
+    if (contributorId) {
+      mappedComments.push({
+        contributor_id: contributorId,
+        pr_number: comment.pr_number,
+        comment_date: comment.comment_date,
+        comment_text: comment.comment_text
+      });
+    } else {
+      skippedCount++;
+      if (skippedCount <= 5) {
+        console.warn(`⚠️ Skipping comment from unknown contributor: ${comment.contributor_login}`);
+      }
+    }
+  }
+  
+  console.log(`💬 Mapped ${mappedComments.length} comments (skipped ${skippedCount})`);
+  
+  if (mappedComments.length === 0) {
+    console.warn('⚠️ No comments to insert after mapping!');
+    return;
+  }
+  
+  // Insert in batches
+  const batchSize = 100;
+  let totalInserted = 0;
+  
+  for (let i = 0; i < mappedComments.length; i += batchSize) {
+    const batch = mappedComments.slice(i, i + batchSize);
+    
+    const { error } = await supabase
+      .from('review_comments')
+      .insert(batch);
+    
+    if (error) {
+      console.error('Error inserting review comments batch:', error);
+      // Continue with other batches instead of throwing
+    } else {
+      totalInserted += batch.length;
+      console.log(`💬 Inserted comments batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(mappedComments.length/batchSize)} (${totalInserted} total)`);
+    }
+  }
+  
+  console.log(`✅ Successfully inserted ${totalInserted} review comments`);
+}
+
 
 async function insertPullRequests(prs) {
   if (prs.length === 0) return;
@@ -289,6 +372,77 @@ async function processPRContributions(pr, octokit, context) {
   
   return contributions;
 }
+
+async function processPRComments(pr, octokit, context) {
+  const comments = [];
+  
+  try {
+    // Get regular PR comments
+    const { data: prComments } = await octokit.rest.issues.listComments({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: pr.number
+    });
+    
+    // Get review comments (inline comments on code)
+    const { data: reviewComments } = await octokit.rest.pulls.listReviewComments({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      pull_number: pr.number
+    });
+    
+    // Get PR reviews (which can also contain comments)
+    const { data: reviews } = await octokit.rest.pulls.listReviews({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      pull_number: pr.number
+    });
+    
+    // Process regular PR comments (exclude bot comments)
+    for (const comment of prComments) {
+      if (!comment.user.type || comment.user.type.toLowerCase() !== 'bot') {
+        comments.push({
+          contributor_login: comment.user.login,
+          pr_number: pr.number,
+          comment_date: new Date(comment.created_at),
+          comment_text: comment.body
+        });
+      }
+    }
+    
+    // Process review comments (inline comments)
+    for (const comment of reviewComments) {
+      if (!comment.user.type || comment.user.type.toLowerCase() !== 'bot') {
+        comments.push({
+          contributor_login: comment.user.login,
+          pr_number: pr.number,
+          comment_date: new Date(comment.created_at),
+          comment_text: comment.body
+        });
+      }
+    }
+    
+    // Process review comments from reviews (general review comments)
+    for (const review of reviews) {
+      if (review.body && review.body.trim() && (!review.user.type || review.user.type.toLowerCase() !== 'bot')) {
+        comments.push({
+          contributor_login: review.user.login,
+          pr_number: pr.number,
+          comment_date: new Date(review.submitted_at),
+          comment_text: review.body
+        });
+      }
+    }
+    
+  } catch (error) {
+    console.warn(`⚠️ Could not process PR #${pr.number} comments: ${error.message}`);
+  }
+  
+  return comments;
+}
+
+
+
 
 async function insertContributionsWithDeduplicatedIds(contributions, originalContributorMap) {
   if (contributions.length === 0) return;
