@@ -41,9 +41,91 @@ async function processPullRequestEvent(context) {
   const pr = context.payload.pull_request;
   
   if (pr.state === 'closed' && pr.merged) {
-    // Record PR as merged and process reviews
+    // First ensure PR exists in the database before processing comments
+    await ensurePRExists(pr);
+    
+    // Then record PR as merged and process reviews
     await processMergedPR(pr);
   }
+}
+
+async function ensurePRExists(pr) {
+  // Check if PR already exists
+  const { data: existingPR } = await supabase
+    .from('pull_requests')
+    .select('pr_number')
+    .eq('pr_number', pr.number)
+    .single();
+    
+  if (existingPR) {
+    console.log(`📋 PR #${pr.number} already exists in database`);
+    return;
+  }
+  
+  console.log(`📋 PR #${pr.number} not found, inserting...`);
+  
+  // Get additional PR data if we have GitHub token
+  const token = process.env.GITHUB_TOKEN || core.getInput('github-token') || core.getInput('token');
+  let reviewers = [];
+  let totalLinesModified = 0;
+  
+  if (token) {
+    const octokit = github.getOctokit(token);
+    
+    try {
+      // Get reviewers
+      const { data: reviews } = await octokit.rest.pulls.listReviews({
+        owner: github.context.repo.owner,
+        repo: github.context.repo.repo,
+        pull_number: pr.number
+      });
+      
+      reviewers = reviews
+        .filter(review => review.user.login !== pr.user.login)
+        .map(review => ({
+          login: review.user.login,
+          submitted_at: review.submitted_at
+        }))
+        .filter((reviewer, index, self) => 
+          index === self.findIndex(r => r.login === reviewer.login)
+        );
+        
+      // Get total lines modified
+      const { data: files } = await octokit.rest.pulls.listFiles({
+        owner: github.context.repo.owner,
+        repo: github.context.repo.repo,
+        pull_number: pr.number
+      });
+      
+      totalLinesModified = files.reduce((total, file) => {
+        return total + (file.additions || 0) + (file.deletions || 0);
+      }, 0);
+      
+    } catch (error) {
+      console.warn(`⚠️ Could not fetch additional data for PR #${pr.number}: ${error.message}`);
+    }
+  }
+  
+  // Insert the PR
+  const { error } = await supabase
+    .from('pull_requests')
+    .insert({
+      pr_number: pr.number,
+      status: pr.merged_at ? 'merged' : pr.state,
+      author_login: pr.user.login,
+      reviewers: reviewers,
+      created_date: new Date(pr.created_at),
+      merged_date: pr.merged_at ? new Date(pr.merged_at) : null,
+      closed_date: pr.closed_at ? new Date(pr.closed_at) : null,
+      lines_modified: totalLinesModified
+    });
+    
+  if (error) {
+    console.error(`❌ Error inserting PR #${pr.number}:`, error);
+    throw error;
+  }
+  
+  console.log(`✅ Successfully inserted PR #${pr.number}`);
 }
 
 async function processNewCommit(commitSha) {

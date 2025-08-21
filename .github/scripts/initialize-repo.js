@@ -31,9 +31,9 @@ async function initializeRepository() {
     
     // Process pull requests and their contributions
     console.log('🔄 Starting pull request processing...');
-    const prContributions = await processPullRequests();
+    const { prContributions, allComments } = await processPullRequests();
     
-    // Add PR contributors to contributor map
+    // Add PR contributors to the contributor map
     for (const prContrib of prContributions) {
       if (!contributorMap.has(prContrib.contributor_login)) {
         contributorMap.set(prContrib.contributor_login, {
@@ -54,7 +54,7 @@ async function initializeRepository() {
     
     // Combine commit and PR contributions
     contributions.push(...prContributions);
-    
+
     // Insert files first
     await insertFiles(Array.from(fileMap.values()));
     
@@ -67,6 +67,11 @@ async function initializeRepository() {
     
     // Now insert contributions with deduplicated contributor IDs
     await insertContributionsWithDeduplicatedIds(contributions, contributorMap);
+
+    if (allComments.length > 0) {
+      console.log(`💬 Processing ${allComments.length} review comments...`);
+      await insertReviewComments(allComments);
+    }
     
     // Update last scan metadata
     await updateMetadata('last_scan_commit', commits[0].hash);
@@ -89,7 +94,7 @@ async function processPullRequests() {
   
   if (!token) {
     console.log('⚠️ No GITHUB_TOKEN provided, skipping PR processing');
-    return [];
+    return { prContributions: [], allComments: [] };
   }
 
   console.log('🔄 Processing pull requests...');
@@ -98,7 +103,7 @@ async function processPullRequests() {
     const octokit = github.getOctokit(process.env.GITHUB_TOKEN);
     const context = github.context;
     
-    // Get all PRs (open, closed, merged)
+    // Get all PRs (open, closed, merged) - same as before
     const allPRs = [];
     let page = 1;
     const perPage = 100;
@@ -123,27 +128,21 @@ async function processPullRequests() {
     
     console.log(`📊 Found ${allPRs.length} total pull requests`);
     
-    // Insert PRs into database
+    // IMPORTANT: Insert PRs into database FIRST
     await insertPullRequests(allPRs);
     
-    // Process PR contributions (reviews and comments)
+    // Then process PR contributions and comments
     const prContributions = [];
-    const allComments = []; // NEW: Collect all comments
+    const allComments = [];
     
     for (const pr of allPRs) {
       const contributions = await processPRContributions(pr, octokit, context);
-      const comments = await processPRComments(pr, octokit, context); // NEW: Get comments
+      const comments = await processPRComments(pr, octokit, context);
       prContributions.push(...contributions);
-      allComments.push(...comments); // NEW: Collect comments
+      allComments.push(...comments);
     }
     
-    // NEW: Insert review comments
-    if (allComments.length > 0) {
-      console.log(`💬 Processing ${allComments.length} review comments...`);
-      await insertReviewComments(allComments);
-    }
-    
-    return prContributions;
+    return { prContributions, allComments };
     
   } catch (error) {
     console.error('❌ Error processing pull requests:', error);
