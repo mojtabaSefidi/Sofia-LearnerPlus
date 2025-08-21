@@ -16,6 +16,11 @@ async function updateRepositoryData() {
     const context = github.context;
     
     if (context.eventName === 'push') {
+      // For push events, add a small delay to ensure merge is complete
+      if (context.payload.commits && context.payload.commits.length > 1) {
+        console.log('🔄 Multiple commits detected, waiting for merge to complete...');
+        await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay
+      }
       await processPushEvent(context);
     } else if (context.eventName === 'pull_request') {
       await processPullRequestEvent(context);
@@ -41,11 +46,67 @@ async function processPullRequestEvent(context) {
   const pr = context.payload.pull_request;
   
   if (pr.state === 'closed' && pr.merged) {
-    // First ensure PR exists in the database before processing comments
+    // Wait a bit to ensure merge commits are accessible
+    console.log('🔄 PR merged, waiting for commits to be available...');
+    await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
+    
+    // First ensure PR exists in database
     await ensurePRExists(pr);
     
-    // Then record PR as merged and process reviews
+    // Then process the merge commits FIRST
+    await processMergeCommits(pr);
+    
+    // Finally process PR data (reviews, comments)
     await processMergedPR(pr);
+  }
+}
+
+async function processMergeCommits(pr) {
+  const token = process.env.GITHUB_TOKEN || core.getInput('github-token') || core.getInput('token');
+  
+  if (!token) {
+    console.warn('⚠️ No GitHub token available, skipping merge commit processing');
+    return;
+  }
+  
+  try {
+    const octokit = github.getOctokit(token);
+    
+    // Get all commits from the PR
+    const { data: prCommits } = await octokit.rest.pulls.listCommits({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      pull_number: pr.number,
+      per_page: 100
+    });
+    
+    console.log(`🔄 Processing ${prCommits.length} commits from PR #${pr.number}`);
+    
+    // Process each commit in the PR
+    for (const commit of prCommits) {
+      try {
+        // Try to process the commit
+        await processNewCommit(commit.sha);
+        console.log(`✅ Processed commit ${commit.sha.substring(0, 8)}`);
+      } catch (error) {
+        console.warn(`⚠️ Could not process commit ${commit.sha}: ${error.message}`);
+        // Continue with other commits
+      }
+    }
+    
+    // Also try to process the merge commit if it exists
+    if (pr.merge_commit_sha && pr.merge_commit_sha !== pr.head.sha) {
+      try {
+        await processNewCommit(pr.merge_commit_sha);
+        console.log(`✅ Processed merge commit ${pr.merge_commit_sha.substring(0, 8)}`);
+      } catch (error) {
+        console.warn(`⚠️ Could not process merge commit ${pr.merge_commit_sha}: ${error.message}`);
+      }
+    }
+    
+  } catch (error) {
+    console.error(`❌ Error processing merge commits for PR #${pr.number}:`, error);
+    // Don't throw - continue with PR processing
   }
 }
 
