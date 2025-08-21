@@ -1,5 +1,5 @@
 // .github/scripts/suggest-reviewers.js
-const { expert_suggestion } = require('./recommenders/expert-suggestion');
+const { achrev_suggestion } = require('./recommenders/AcHRev');
 
 const { 
   calculateWorkloadAnalytics, 
@@ -275,7 +275,7 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor) {
 
   // Add CxFactor scoring
   console.log('🎯 Calculating CxFactor scores...');
-  const expertScores = await expert_suggestion(
+  const expertScores = await achrev_suggestion(
     github.context.payload.pull_request.number,
     prAuthor,
     prFiles,
