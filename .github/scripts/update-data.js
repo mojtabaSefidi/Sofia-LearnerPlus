@@ -189,7 +189,31 @@ async function ensurePRExists(pr) {
   console.log(`✅ Successfully inserted PR #${pr.number}`);
 }
 
+async function checkCommitExists(commitSha) {
+  const { data: existing, error } = await supabase
+    .from('contributions')
+    .select('activity_id')
+    .eq('activity_type', 'commit')
+    .eq('activity_id', commitSha)
+    .limit(1)
+    .single();
+    
+  if (error && error.code !== 'PGRST116') {
+    console.warn(`Warning checking commit existence: ${error.message}`);
+    return false;
+  }
+  
+  return !!existing;
+}
+
 async function processNewCommit(commitSha) {
+  // CHECK: Skip if commit already processed
+  const existingCommit = await checkCommitExists(commitSha);
+  if (existingCommit) {
+    console.log(`⏭️ Commit ${commitSha.substring(0, 8)} already processed, skipping...`);
+    return;
+  }
+
   // Use separate commands like in the working initialize-repo.js
   const nameStatus = await git.show([commitSha, '--name-status', '--format=']);
   const numStat = await git.show([commitSha, '--numstat', '--format=']);
@@ -388,7 +412,7 @@ async function processPRComments(pr, octokit) {
 async function insertReviewComments(comments) {
   if (comments.length === 0) return;
   
-  console.log(`💬 Inserting ${comments.length} review comments...`);
+  console.log(`💬 Checking for existing comments before inserting ${comments.length} review comments...`);
   
   // Get contributors to map logins to IDs
   const { data: dbContributors, error: contributorError } = await supabase
@@ -405,43 +429,54 @@ async function insertReviewComments(comments) {
     contributorLookup.set(c.github_login.toLowerCase(), c.id);
   });
   
-  // Map comments to database format
+  // Filter out existing comments
   const mappedComments = [];
   let skippedCount = 0;
+  let duplicateCount = 0;
   
   for (const comment of comments) {
     const contributorId = contributorLookup.get(comment.contributor_login.toLowerCase());
     
-    if (contributorId) {
-      mappedComments.push({
-        contributor_id: contributorId,
-        pr_number: comment.pr_number,
-        comment_date: comment.comment_date,
-        comment_text: comment.comment_text
-      });
-    } else {
+    if (!contributorId) {
       // Try to create contributor if not exists
       const newContributor = await getOrCreateContributorByLogin(comment.contributor_login);
-      if (newContributor) {
-        mappedComments.push({
-          contributor_id: newContributor.id,
-          pr_number: comment.pr_number,
-          comment_date: comment.comment_date,
-          comment_text: comment.comment_text
-        });
-      } else {
+      if (!newContributor) {
         skippedCount++;
         if (skippedCount <= 5) {
           console.warn(`⚠️ Skipping comment from unknown contributor: ${comment.contributor_login}`);
         }
+        continue;
       }
+      contributorId = newContributor.id;
     }
+    
+    // Check if comment already exists
+    const { data: existingComment } = await supabase
+      .from('review_comments')
+      .select('id')
+      .eq('contributor_id', contributorId)
+      .eq('pr_number', comment.pr_number)
+      .eq('comment_date', comment.comment_date)
+      .eq('comment_text', comment.comment_text)
+      .single();
+      
+    if (existingComment) {
+      duplicateCount++;
+      continue;
+    }
+    
+    mappedComments.push({
+      contributor_id: contributorId,
+      pr_number: comment.pr_number,
+      comment_date: comment.comment_date,
+      comment_text: comment.comment_text
+    });
   }
   
-  console.log(`💬 Mapped ${mappedComments.length} comments (skipped ${skippedCount})`);
+  console.log(`💬 Mapped ${mappedComments.length} new comments (skipped ${skippedCount}, duplicates ${duplicateCount})`);
   
   if (mappedComments.length === 0) {
-    console.warn('⚠️ No comments to insert after mapping!');
+    console.warn('⚠️ No new comments to insert after duplicate checking!');
     return;
   }
   
@@ -573,6 +608,21 @@ async function getOrCreateFile(path) {
 }
 
 async function recordContribution(contribution) {
+  // Check if this specific contribution already exists
+  const { data: existing } = await supabase
+    .from('contributions')
+    .select('id')
+    .eq('contributor_id', contribution.contributor_id)
+    .eq('file_id', contribution.file_id)
+    .eq('activity_type', contribution.activity_type)
+    .eq('activity_id', contribution.activity_id)
+    .single();
+    
+  if (existing) {
+    console.log(`⏭️ Contribution already exists: ${contribution.activity_type} ${contribution.activity_id} by contributor ${contribution.contributor_id} for file ${contribution.file_id}`);
+    return;
+  }
+  
   const { error } = await supabase
     .from('contributions')
     .insert(contribution);
