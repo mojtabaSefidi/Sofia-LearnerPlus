@@ -1,4 +1,6 @@
 // .github/scripts/suggest-reviewers.js
+const { expert_suggestion } = require('./recommenders/expert-suggestion');
+
 const { 
   calculateWorkloadAnalytics, 
   getPRPerformanceMetrics, 
@@ -270,12 +272,36 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor) {
   // Get last activity dates for PR files
   console.log('📅 Getting last activity dates...');
   const activityData = await getLastActivityDatesForPRFiles(contributorLogins, filePaths);
+
+  // Add CxFactor scoring
+  console.log('🎯 Calculating CxFactor scores...');
+  const expertScores = await expert_suggestion(
+    github.context.payload.pull_request.number,
+    prAuthor,
+    prFiles,
+    20 // Get top 20 for comprehensive analysis
+  );
+
+  // Create a map for easy lookup
+  const expertScoreMap = new Map();
+  if (Array.isArray(expertScores)) {
+    expertScores.forEach(expert => {
+      // normalize expected fields and guard against missing props
+      const login = expert.login || expert.github || expert.handle;
+      const cxFactorScore = typeof expert.cxFactorScore === 'number' ? expert.cxFactorScore : (expert.score || 0);
+      const fileCount = typeof expert.fileCount === 'number' ? expert.fileCount : (expert.files || 0);
+      if (login) {
+        expertScoreMap.set(login, { cxFactorScore, fileCount });
+      }
+    });
+  }
   
-  // Combine all metrics
+  // Combine all metrics (including CxFactor)
   const enhancedMetrics = finalMetrics.map(metrics => {
     const workload = workloadData.get(metrics.login) || {};
     const performance = performanceData.get(metrics.login) || {};
     const activity = activityData.get(metrics.login) || {};
+    const expertScore = expertScoreMap.get(metrics.login) || { cxFactorScore: 0, fileCount: 0 };
     
     return {
       ...metrics,
@@ -291,11 +317,14 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor) {
       lastReviewDate: performance.lastReviewDate,
       lastReviewInPRFiles: activity.lastReviewInPRFiles,
       lastCommitDate: activity.lastCommitDate,
-      lastModificationInPRFiles: activity.lastModificationInPRFiles
+      lastModificationInPRFiles: activity.lastModificationInPRFiles,
+      // CxFactor score
+      cxFactorScore: expertScore.cxFactorScore,
+      expertFileCount: expertScore.fileCount
     };
   });
   
-  // Sort by knowledge (knows) first, then by total local activity
+  // Sort by knowledge (knows) first, then by total local activity (original sorting)
   enhancedMetrics.sort((a, b) => {
     if (b.knows !== a.knows) {
       return b.knows - a.knows;
@@ -391,6 +420,25 @@ No developers found with prior experience on these files. Consider assigning rev
 - **LastReviewOnPRFile**: Date of last review on any file in this PR  
 `;
 
+    const cxFactorScores = reviewerMetrics
+      .filter(m => m.cxFactorScore > 0)
+      .sort((a, b) => b.cxFactorScore - a.cxFactorScore);
+
+    if (cxFactorScores.length > 0) {
+      comment += `\n### 🎯 CxFactor Expertise Scores
+
+| Developer | CxFactor Score |
+|-----------|----------------|
+`;
+
+      cxFactorScores.forEach(metrics => {
+        comment += `| @${metrics.login} | ${(metrics.cxFactorScore || 0).toFixed(3)} |\n`;
+      });
+
+      comment += `\n**CxFactor Score**: ACHRev expertise score (0-1) based on review history, commit history, work patterns, and recency of contributions on PR files.
+`;
+    }
+
     // Additional metrics section
     comment += `<details>
 <summary>📊 Additional Metrics & Activity Timeline</summary>
@@ -413,9 +461,9 @@ No developers found with prior experience on these files. Consider assigning rev
 - **G-Reviews**: Global reviews in the last year
 - **A-Months**: Active months in the last year
 
-// ### File Knowledge Breakdown
-// `;
+`;
     
+// ### File Knowledge Breakdown
 //     reviewerMetrics.forEach(metrics => {
 //       if (metrics.knownFilesList.length > 0) {
 //         comment += `**@${metrics.login}** knows these files:\n`;
