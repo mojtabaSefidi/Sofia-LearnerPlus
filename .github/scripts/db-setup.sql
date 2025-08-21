@@ -58,6 +58,17 @@ CREATE TABLE pull_requests (
   lines_modified INTEGER DEFAULT 0
 );
 
+-- table for review comments
+CREATE TABLE review_comments (
+  id SERIAL PRIMARY KEY,
+  contributor_id INT NOT NULL REFERENCES contributors(id),
+  file_id INT NOT NULL REFERENCES files(id),
+  pr_number INT NOT NULL REFERENCES pull_requests(pr_number),
+  comment_date TIMESTAMP NOT NULL,
+  comment_text TEXT,
+  created_at TIMESTAMP DEFAULT now()
+);
+
 -- Repository metadata
 CREATE TABLE repository_metadata (
   id SERIAL PRIMARY KEY,
