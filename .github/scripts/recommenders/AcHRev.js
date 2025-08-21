@@ -1,3 +1,12 @@
+const { createClient } = require('@supabase/supabase-js');
+const core = require('@actions/core');
+const github = require('@actions/github');
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY
+);
+
 async function achrev_suggestion(prNumber, prAuthor, prFiles, topN = 5) {
   console.log('🔬 Running achrev_suggestion...');
   if (!prFiles || prFiles.length === 0) {
