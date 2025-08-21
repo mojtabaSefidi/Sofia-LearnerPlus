@@ -75,9 +75,6 @@ namespace RelationalGit.Recommendation
             return score;
         }
 
-
-
-
         internal override double ComputeReviewerScore(PullRequestContext pullRequestContext, DeveloperKnowledge reviewer)
         {
             double? commit_score = 0.0;
