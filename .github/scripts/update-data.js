@@ -124,6 +124,13 @@ async function processMergedPR(pr) {
       
       for (const file of files) {
         const fileRecord = await getOrCreateFile(file.filename);
+        
+        // Skip if file record creation failed
+        if (!fileRecord) {
+          console.warn(`⚠️ Skipping contribution for invalid file: ${file.filename}`);
+          continue;
+        }
+        
         const fileLinesModified = (file.additions || 0) + (file.deletions || 0);
         
         await recordContribution({
@@ -139,6 +146,13 @@ async function processMergedPR(pr) {
         });
       }
     }
+  }
+  
+  // NEW: Process and insert review comments
+  const comments = await processPRComments(pr, octokit);
+  if (comments.length > 0) {
+    console.log(`💬 Found ${comments.length} comments for PR #${pr.number}`);
+    await insertReviewComments(comments);
   }
   
   // Record PR with reviewers
@@ -160,6 +174,146 @@ async function processMergedPR(pr) {
   }
 }
 
+async function processPRComments(pr, octokit) {
+  const comments = [];
+  
+  try {
+    // Get regular PR comments
+    const { data: prComments } = await octokit.rest.issues.listComments({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      issue_number: pr.number
+    });
+    
+    // Get review comments (inline comments on code)
+    const { data: reviewComments } = await octokit.rest.pulls.listReviewComments({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      pull_number: pr.number
+    });
+    
+    // Get PR reviews (which can also contain comments)
+    const { data: reviews } = await octokit.rest.pulls.listReviews({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      pull_number: pr.number
+    });
+    
+    // Process regular PR comments (exclude bot comments)
+    for (const comment of prComments) {
+      if (!comment.user.type || comment.user.type.toLowerCase() !== 'bot') {
+        comments.push({
+          contributor_login: comment.user.login,
+          pr_number: pr.number,
+          comment_date: new Date(comment.created_at),
+          comment_text: comment.body
+        });
+      }
+    }
+    
+    // Process review comments (inline comments)
+    for (const comment of reviewComments) {
+      if (!comment.user.type || comment.user.type.toLowerCase() !== 'bot') {
+        comments.push({
+          contributor_login: comment.user.login,
+          pr_number: pr.number,
+          comment_date: new Date(comment.created_at),
+          comment_text: comment.body
+        });
+      }
+    }
+    
+    // Process review comments from reviews (general review comments)
+    for (const review of reviews) {
+      if (review.body && review.body.trim() && (!review.user.type || review.user.type.toLowerCase() !== 'bot')) {
+        comments.push({
+          contributor_login: review.user.login,
+          pr_number: pr.number,
+          comment_date: new Date(review.submitted_at),
+          comment_text: review.body
+        });
+      }
+    }
+    
+  } catch (error) {
+    console.warn(`⚠️ Could not process PR #${pr.number} comments: ${error.message}`);
+  }
+  
+  return comments;
+}
+
+async function insertReviewComments(comments) {
+  if (comments.length === 0) return;
+  
+  console.log(`💬 Inserting ${comments.length} review comments...`);
+  
+  // Get contributors to map logins to IDs
+  const { data: dbContributors, error: contributorError } = await supabase
+    .from('contributors')
+    .select('id, github_login');
+    
+  if (contributorError) {
+    console.error('Error fetching contributors for comments:', contributorError);
+    throw contributorError;
+  }
+  
+  const contributorLookup = new Map();
+  dbContributors.forEach(c => {
+    contributorLookup.set(c.github_login.toLowerCase(), c.id);
+  });
+  
+  // Map comments to database format
+  const mappedComments = [];
+  let skippedCount = 0;
+  
+  for (const comment of comments) {
+    const contributorId = contributorLookup.get(comment.contributor_login.toLowerCase());
+    
+    if (contributorId) {
+      mappedComments.push({
+        contributor_id: contributorId,
+        pr_number: comment.pr_number,
+        comment_date: comment.comment_date,
+        comment_text: comment.comment_text
+      });
+    } else {
+      // Try to create contributor if not exists
+      const newContributor = await getOrCreateContributorByLogin(comment.contributor_login);
+      if (newContributor) {
+        mappedComments.push({
+          contributor_id: newContributor.id,
+          pr_number: comment.pr_number,
+          comment_date: comment.comment_date,
+          comment_text: comment.comment_text
+        });
+      } else {
+        skippedCount++;
+        if (skippedCount <= 5) {
+          console.warn(`⚠️ Skipping comment from unknown contributor: ${comment.contributor_login}`);
+        }
+      }
+    }
+  }
+  
+  console.log(`💬 Mapped ${mappedComments.length} comments (skipped ${skippedCount})`);
+  
+  if (mappedComments.length === 0) {
+    console.warn('⚠️ No comments to insert after mapping!');
+    return;
+  }
+  
+  // Insert comments
+  const { error } = await supabase
+    .from('review_comments')
+    .insert(mappedComments);
+  
+  if (error) {
+    console.error('Error inserting review comments:', error);
+    throw error;
+  }
+  
+  console.log(`✅ Successfully inserted ${mappedComments.length} review comments`);
+}
 
 async function getOrCreateContributor(authorInfo) {
   // First try to find by GitHub login
