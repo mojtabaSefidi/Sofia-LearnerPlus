@@ -141,10 +141,12 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
 
     // Count unique other developers who have prior commits/reviews on this file
     const uniqueDevs = new Set();
-    if (fileContributions) {
+    if (fileContributions && Array.isArray(fileContributions)) {
       fileContributions.forEach(contrib => {
-        const login = contrib.contributors.github_login;
-        if (login) uniqueDevs.add(login);
+        const login = contrib.contributors?.github_login;
+        if (login && typeof login === 'string' && login.trim()) {
+          uniqueDevs.add(login);
+        }
       });
     }
     const numKnowledgable = uniqueDevs.size;
@@ -157,7 +159,7 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
         contribution_date,
         lines_modified,
         contributors!inner(github_login),
-        files!inner(current_path)
+        files!inner(current_path, canonical_path)
       `)
       .or(`files.current_path.eq.${filePath},files.canonical_path.eq.${filePath}`)
       .lt('contribution_date', prCreatedAt)
@@ -169,17 +171,21 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
     let authorLastCommitDate = null;
     let authorLastReviewDate = null;
 
-    if (authorContributions) {
+    if (authorContributions && Array.isArray(authorContributions)) {
       authorContributions.forEach(ac => {
-        const dt = ac.contribution_date ? new Date(ac.contribution_date) : null;
+        if (!ac || !ac.activity_type || !ac.contribution_date) return;
+        
+        const dt = new Date(ac.contribution_date);
+        if (isNaN(dt.getTime())) return; // Skip invalid dates
+        
         if (ac.activity_type === 'commit') {
           authorNumCommits++;
-          if (dt && (!authorLastCommitDate || dt > authorLastCommitDate)) {
+          if (!authorLastCommitDate || dt > authorLastCommitDate) {
             authorLastCommitDate = dt;
           }
         } else if (ac.activity_type === 'review') {
           authorNumReviews++;
-          if (dt && (!authorLastReviewDate || dt > authorLastReviewDate)) {
+          if (!authorLastReviewDate || dt > authorLastReviewDate) {
             authorLastReviewDate = dt;
           }
         }
@@ -191,7 +197,7 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
     authorLastReviewDate = authorLastReviewDate ? authorLastReviewDate.toISOString() : null;
 
     // lookup per-file normalized CxFactor for the author if provided ---
-    let authorCxFactor = null;
+    let authorCxFactor = 0; // Default to 0 instead of null
     try {
       if (achrevPerFileMap && achrevPerFileMap instanceof Map) {
         const per = achrevPerFileMap.get(`${prAuthor}|${filePath}`);
@@ -204,15 +210,15 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
           } else if (typeof per.fileScore === 'number') {
             // last-resort: convert raw 0..5 to 0..1
             authorCxFactor = per.fileScore / 5;
-          } else {
-            authorCxFactor = null;
           }
+          // If none of the above conditions are met, authorCxFactor remains 0
         }
+        // If per is null/undefined, authorCxFactor remains 0
       }
     } catch (err) {
-      // defensive: do not throw here; keep null and continue
+      // defensive: do not throw here; keep 0 and continue
       console.warn(`⚠️ achrevPerFileMap lookup failed for ${prAuthor}|${filePath}:`, err);
-      authorCxFactor = null;
+      authorCxFactor = 0;
     }
 
     let topContributor = null;
@@ -463,7 +469,7 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
     };
 
     const changeSizeText = (typeof file.changeSize === 'number') ? file.changeSize : 'N/A';
-    const cxText = (file.authorCxFactor === null || file.authorCxFactor === undefined) ? 'N/A' : file.authorCxFactor.toFixed(3);
+    const cxText = (typeof file.authorCxFactor === 'number') ? file.authorCxFactor.toFixed(3) : '0.000';
 
     comment += `| \`${file.filename}\` | ${file.changeType} | ${file.numKnowledgable} | ${changeSizeText} | ${file.authorNumCommits} | ${formatDate(file.authorLastCommitDate)} | ${file.authorNumReviews} | ${formatDate(file.authorLastReviewDate)} | ${cxText} |\n`;
 
