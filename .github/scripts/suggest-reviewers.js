@@ -441,8 +441,8 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
 
 ### Author Knowledge: @${prAuthor}
 
-| File | Change Type | NumKnowledgable | Change Size | NumCommit | Last Commit Date | NumReview | Last Review Date | Author CxFactor |
-|------|-------------|-----------------|-------------|-----------|------------------|-----------|------------------|-----------------|
+| ChangedFile | Change Type | NumKnowledgable | Change Size | NumCommit | Last Commit Date | NumReview | Last Review Date | Author CxFactor |
+|-------------|-------------|-----------------|-------------|-----------|------------------|-----------|------------------|-----------------|
 `;
 
   // Categorize files
@@ -496,7 +496,7 @@ No developers found with prior experience on these files. Consider assigning rev
   } else {
     comment += `\n### 👥 Reviewer Candidates
 
-| Developer | Knows | Learns | WorkloadShare% | PercentileRank% | Relative To Mean% | ΔGiniWorkload(Absolute) | AvgTime(h) | AvgSize(line) | line/hour | LastReview | LastReviewOnPRFile |
+| Developer | Knows | Learns | Workload Share | Percentile Rank  | Relative To Mean | ΔGiniWorkload(Absolute) | AvgTime(h) | AvgSize(line) | line/hour | LastReview | LastReviewOnPRFile |
 |-----------|-------|--------|----------------|-----------------|-------------------|-------------------------|------------|---------------|-----------|------------|--------------------|
 `;
 
@@ -518,9 +518,9 @@ No developers found with prior experience on these files. Consider assigning rev
     comment += `\n**Legend:**
 - **Knows**: Files in this PR the reviewer has worked on before  
 - **Learns**: Files in this PR new to the reviewer (${filePaths.length} total - Knows)  
-- **WorkloadShare%**: Percentage of total reviews in the last quarter  
-- **PercentileRank%**: Position in team workload distribution  
-- **Relative To Mean%**: Deviation from the team average workload  
+- **Workload Share**: Percentage of total reviews in the last quarter  
+- **Percentile Rank**: Position in team workload distribution  
+- **Relative To Mean**: Deviation from the team average workload  
 - **ΔGiniWorkload(Absolute)**: Gini coefficient of workload inequality  
 - **AvgTime(h)**: Average review time in hours  
 - **AvgSize(line)**: Average diff size in lines  
@@ -552,8 +552,8 @@ No developers found with prior experience on these files. Consider assigning rev
 <summary>📊 Additional Metrics & Activity Timeline</summary>
 
 ### Activity Timeline
-| Developer | LastCommit | LastModPR | L-Commits | L-Reviews | G-Commits | G-Reviews | A-Months |
-|-----------|------------|-----------|-----------|-----------|-----------|-----------|----------|
+| Developer | LastCommit | LastModificationOnPR | L-Commits | L-Reviews | G-Commits | G-Reviews | A-Months |
+|-----------|------------|----------------------|-----------|-----------|-----------|-----------|----------|
 `;
 
     reviewerMetrics.forEach(metrics => {
@@ -562,7 +562,7 @@ No developers found with prior experience on these files. Consider assigning rev
 
     comment += `\n**Timeline Legend:**
 - **LastCommit**: Date of last commit (any file, all time)
-- **LastModPR**: Date of last modification in any of this PR's files (all time)
+- **LastModificationOnPR**: Date of last modification in any of this PR's files (all time)
 - **L-Commits**: Local commits on known files (all time)
 - **L-Reviews**: Local reviews on known files (all time)
 - **G-Commits**: Global commits in the last year
