@@ -467,13 +467,13 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
   comment += `
   
   **Column descriptions:**
-  - **NumKnowledgable**: Number of other developers (excluding PR author) who have prior commits or reviews on this file _before_ the PR creation date.
-  - **Change Size**: Total lines changed in this PR for the file (additions + deletions / GitHub 'changes' field).
-  - **NumCommit**: Number of earlier commits made by the PR author on this file (excluding the current PR commits).
+  - **NumKnowledgable**: Number of developers (excluding PR author) who have prior commits or reviews on this file.
+  - **Change Size**: Total lines changed in this PR for the file (additions + deletions).
+  - **NumCommit**: Number of prior commits made by the PR author on this file (excluding the current PR commits).
   - **Last Commit Date**: Date of the author's most recent prior commit on this file.
   - **NumReview**: Number of times the PR author acted as a reviewer on this file prior to this PR.
   - **Last Review Date**: Date of the author's most recent prior review activity on this file.
-  - **Author CxFactor**: Author's CxFactor **for this file** (N/A unless the achrev/ACHRev call is extended to return per-file CxFactor — see note).
+  - **Author CxFactor**: Author's levels of expertise on this file.
   `;
   
   // Add enhanced reviewer suggestions with LEARNS column
@@ -549,9 +549,7 @@ No developers found with prior experience on these files. Consider assigning rev
   }
   
   comment += `\n---
-*This enhanced analysis includes workload distribution metrics and performance indicators from the last quarter (3 months). Workload metrics help ensure fair distribution of review responsibilities across the team.*
-
-*Generated for PR by ${prAuthor}*`;
+*Suggestions:`;
   
   return comment;
 }
