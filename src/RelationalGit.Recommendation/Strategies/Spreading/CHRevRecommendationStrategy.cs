@@ -44,7 +44,7 @@ namespace RelationalGit.Recommendation
                 score += scoreTotalComments + scoreTotalWorkDays + scoreRecency;
             }
 
-            return score / (3*pullRequestContext.PullRequestFiles.Length);
+            return score / (3 * pullRequestContext.PullRequestFiles.Length);
         }
     }
 }
