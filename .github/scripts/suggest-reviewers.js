@@ -135,9 +135,9 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
         contributors!inner(github_login, canonical_name),
         files!inner(current_path, canonical_path)
       `)
-      .or(`files.current_path.eq.${filePath},files.canonical_path.eq.${filePath}`)
-      .lt('contribution_date', prCreatedAt) // only _prior_ contributions
-      .neq('contributors.github_login', prAuthor); // exclude PR author for NumKnowledgable
+      .or(`files.current_path.eq.'${filePath}',files.canonical_path.eq.'${filePath}'`)
+      .lt('contribution_date', prCreatedAt)
+      .neq('contributors.github_login', prAuthor);
 
     // Count unique other developers who have prior commits/reviews on this file
     const uniqueDevs = new Set();
@@ -161,7 +161,7 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
         contributors!inner(github_login),
         files!inner(current_path, canonical_path)
       `)
-      .or(`files.current_path.eq.${filePath},files.canonical_path.eq.${filePath}`)
+      .or(`files.current_path.eq.'${filePath}',files.canonical_path.eq.'${filePath}'`)
       .lt('contribution_date', prCreatedAt)
       .eq('contributors.github_login', prAuthor);
 
