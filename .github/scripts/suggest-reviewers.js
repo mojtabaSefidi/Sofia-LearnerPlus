@@ -168,8 +168,8 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
     // Aggregate author stats for this file
     let authorNumCommits = 0;
     let authorNumReviews = 0;
-    let authorLastCommitDate = No Commits;
-    let authorLastReviewDate = No Reviews;
+    let authorLastCommitDate = null;
+    let authorLastReviewDate = null;
 
     if (authorContributions && Array.isArray(authorContributions)) {
       authorContributions.forEach(ac => {
@@ -193,8 +193,8 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
     }
 
     // Format dates to ISO strings for later formatting (or null)
-    authorLastCommitDate = authorLastCommitDate ? authorLastCommitDate.toISOString() : null;
-    authorLastReviewDate = authorLastReviewDate ? authorLastReviewDate.toISOString() : null;
+    authorLastCommitDate = authorLastCommitDate ? authorLastCommitDate.toISOString() : 'No Commits';
+    authorLastReviewDate = authorLastReviewDate ? authorLastReviewDate.toISOString() : 'No Reviews';
 
     // console.log("File Path:", filePath);
     // console.log("prCreatedAt:", prCreatedAt);
