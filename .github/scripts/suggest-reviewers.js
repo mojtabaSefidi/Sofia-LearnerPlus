@@ -260,6 +260,12 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLogin
   const oneYearAgo = new Date();
   oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
   
+  // Get all potential reviewers (all contributors from the last year, excluding PR author)
+  const { data: allContributors } = await supabase
+    .from('contributors')
+    .select('github_login, canonical_name')
+    .neq('github_login', prAuthor);
+  
   // Get all contributions for PR files
   const { data: prFileContributions } = await supabase
     .from('contributions')
@@ -287,8 +293,23 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLogin
     .gte('contribution_date', oneYearAgo.toISOString())
     .neq('contributors.github_login', prAuthor);
   
-  // Process metrics by contributor
+  // Initialize metrics for ALL contributors
   const contributorMetrics = new Map();
+  
+  if (allContributors) {
+    allContributors.forEach(contributor => {
+      contributorMetrics.set(contributor.github_login, {
+        login: contributor.github_login,
+        canonical_name: contributor.canonical_name,
+        knownFiles: new Set(),
+        localCommits: 0,
+        localReviews: 0,
+        globalCommits: 0,
+        globalReviews: 0,
+        activeMonths: new Set()
+      });
+    });
+  }
   
   // Process PR file knowledge
   if (prFileContributions) {
@@ -296,26 +317,16 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLogin
       const login = contrib.contributors.github_login;
       const filePath = contrib.files.current_path;
       
-      if (!contributorMetrics.has(login)) {
-        contributorMetrics.set(login, {
-          login,
-          canonical_name: contrib.contributors.canonical_name,
-          knownFiles: new Set(),
-          localCommits: 0,
-          localReviews: 0,
-          globalCommits: 0,
-          globalReviews: 0,
-          activeMonths: new Set()
-        });
-      }
-      
-      const metrics = contributorMetrics.get(login);
-      metrics.knownFiles.add(filePath);
-      
-      if (contrib.activity_type === 'commit') {
-        metrics.localCommits++;
-      } else if (contrib.activity_type === 'review') {
-        metrics.localReviews++;
+      // Only process if we have this contributor in our map
+      if (contributorMetrics.has(login)) {
+        const metrics = contributorMetrics.get(login);
+        metrics.knownFiles.add(filePath);
+        
+        if (contrib.activity_type === 'commit') {
+          metrics.localCommits++;
+        } else if (contrib.activity_type === 'review') {
+          metrics.localReviews++;
+        }
       }
     });
   }
@@ -327,26 +338,16 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLogin
       const date = new Date(contrib.contribution_date);
       const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
       
-      if (!contributorMetrics.has(login)) {
-        contributorMetrics.set(login, {
-          login,
-          canonical_name: contrib.contributors.canonical_name,
-          knownFiles: new Set(),
-          localCommits: 0,
-          localReviews: 0,
-          globalCommits: 0,
-          globalReviews: 0,
-          activeMonths: new Set()
-        });
-      }
-      
-      const metrics = contributorMetrics.get(login);
-      metrics.activeMonths.add(monthKey);
-      
-      if (contrib.activity_type === 'commit') {
-        metrics.globalCommits++;
-      } else if (contrib.activity_type === 'review') {
-        metrics.globalReviews++;
+      // Only process if we have this contributor in our map
+      if (contributorMetrics.has(login)) {
+        const metrics = contributorMetrics.get(login);
+        metrics.activeMonths.add(monthKey);
+        
+        if (contrib.activity_type === 'commit') {
+          metrics.globalCommits++;
+        } else if (contrib.activity_type === 'review') {
+          metrics.globalReviews++;
+        }
       }
     });
   }
