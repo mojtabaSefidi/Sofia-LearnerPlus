@@ -530,7 +530,6 @@ No developers found with prior experience on these files. Consider assigning rev
 `;
 
     const cxFactorScores = reviewerMetrics
-      .filter(m => m.cxFactorScore > 0)
       .sort((a, b) => b.cxFactorScore - a.cxFactorScore);
 
     if (cxFactorScores.length > 0) {
