@@ -494,13 +494,13 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
   comment += `
   
   **Column descriptions:**
-  - **NumKnowledgable**: Number of other developers (excluding PR author) who have prior commits or reviews on this file _before_ the PR creation date (computed from the reviewer candidates 'Knows' lists).
+  - **NumKnowledgable**: Number of other developers (excluding PR author) who have prior commits or reviews on this file _before_ the PR creation date.
   - **Change Size**: Total lines changed in this PR for the file (additions + deletions / GitHub 'changes' field).
   - **NumCommit**: Number of earlier commits made by the PR author on this file (excluding the current PR commits).
   - **Last Commit Date**: Date of the author's most recent prior commit on this file.
   - **NumReview**: Number of times the PR author acted as a reviewer on this file prior to this PR.
   - **Last Review Date**: Date of the author's most recent prior review activity on this file.
-  - **Author CxFactor**: Author's per-file normalized CxFactor (0..1). A value of `0` means no prior evidence of familiarity on that file.
+  - **Author CxFactor**: Author's per-file normalized CxFactor. A value of 0 means no prior evidence of familiarity on that file.
   `;
   
   // Add enhanced reviewer suggestions with LEARNS column
