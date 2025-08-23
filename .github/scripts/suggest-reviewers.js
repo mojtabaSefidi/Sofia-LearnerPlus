@@ -47,12 +47,48 @@ async function suggestReviewers() {
     });
     
     console.log(`📁 Found ${prFiles.length} files in PR`);
+
+    // CALL ACHRev
+    console.log('🎯 Running ACHRev to compute CxFactor scores...');
+
+    let achrevResults = [];
+    try {
+      achrevResults = await achrev_suggestion(
+        pr.number,
+        pr.user.login,
+        prFiles,
+        200,                  // topN (tune as needed)
+        pr.created_at,        // prCreatedAt -> ensure prior-history only
+        { includeAuthor: true, perFileForAuthorOnly: true }
+      );
+    } catch (err) {
+      // Fail gracefully: log and continue with empty ACHRev results
+      console.error('⚠️ achrev_suggestion failed or errored:', err);
+      achrevResults = [];
+    }
+
+    // Build quick lookup maps:
+    // per-file map keyed by "<login>|<file>" -> per-file object (contains normalizedFileCx and normalizedFileCxByPR)
+    const achrevPerFileMap = new Map();
+    // aggregated map per login -> { cxFactorScore, fileCount, perFile: [...] }
+    const achrevByLoginMap = new Map();
+
+    if (Array.isArray(achrevResults)) {
+      achrevResults.forEach(r => {
+        achrevByLoginMap.set(r.login, { cxFactorScore: r.cxFactorScore, fileCount: r.fileCount, perFile: r.perFile });
+        if (Array.isArray(r.perFile)) {
+          r.perFile.forEach(p => {
+            achrevPerFileMap.set(`${r.login}|${p.file}`, p);
+          });
+        }
+      });
+    }
+
+    // Analyze files in detail — pass achrevPerFileMap so analyzeFiles can set per-file author CxFactor
+    const fileAnalysis = await analyzeFiles(prFiles, pr.user.login, pr.created_at, achrevPerFileMap);
     
-    // Analyze files in detail
-    const fileAnalysis = await analyzeFiles(prFiles, pr.user.login, pr.created_at);
-    
-    // Calculate detailed reviewer metrics
-    const reviewerMetrics = await calculateDetailedReviewerMetrics(prFiles, pr.user.login);
+    // Calculate detailed reviewer metrics — pass achrevByLoginMap so we don't re-run achrev inside it
+    const reviewerMetrics = await calculateDetailedReviewerMetrics(prFiles, pr.user.login, achrevByLoginMap);
     
     // Generate comprehensive comment
     const comment = generateDetailedComment(fileAnalysis, reviewerMetrics, pr.user.login, prFiles);
@@ -73,7 +109,7 @@ async function suggestReviewers() {
   }
 }
 
-async function analyzeFiles(prFiles, prAuthor, prCreatedAt) {
+async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
   console.log('📊 Analyzing PR files & Author Knowledge...');
 
   const fileAnalysis = [];
@@ -154,14 +190,32 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt) {
     authorLastCommitDate = authorLastCommitDate ? authorLastCommitDate.toISOString() : null;
     authorLastReviewDate = authorLastReviewDate ? authorLastReviewDate.toISOString() : null;
 
-    // NOTE: per-file author CxFactor isn't available in current achrev call (we return null for now)
-    const authorCxFactor = null;
+    // lookup per-file normalized CxFactor for the author if provided ---
+    let authorCxFactor = null;
+    try {
+      if (achrevPerFileMap && achrevPerFileMap instanceof Map) {
+        const per = achrevPerFileMap.get(`${prAuthor}|${filePath}`);
+        if (per) {
+          // prefer per.normalizedFileCx (0..1); fallback to normalizedFileCxByPR if available
+          if (typeof per.normalizedFileCx === 'number') {
+            authorCxFactor = per.normalizedFileCx;
+          } else if (typeof per.normalizedFileCxByPR === 'number') {
+            authorCxFactor = per.normalizedFileCxByPR;
+          } else if (typeof per.fileScore === 'number') {
+            // last-resort: convert raw 0..5 to 0..1
+            authorCxFactor = per.fileScore / 5;
+          } else {
+            authorCxFactor = null;
+          }
+        }
+      }
+    } catch (err) {
+      // defensive: do not throw here; keep null and continue
+      console.warn(`⚠️ achrevPerFileMap lookup failed for ${prAuthor}|${filePath}:`, err);
+      authorCxFactor = null;
+    }
 
-    // Keep topContributor if you still want it internally (not printed in the new table),
-    // but we keep it for potential later use.
-    // Re-query for other-dev contribution breakdown if you want top contributor info.
     let topContributor = null;
-    // (optional) compute topContributor among the other devs if needed:
     if (fileContributions && fileContributions.length > 0) {
       const commits = new Map();
       const reviews = new Map();
@@ -187,13 +241,13 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt) {
     fileAnalysis.push({
       filename: filePath,
       changeType,
-      numKnowledgable,           // new: number of other developers with prior history
-      changeSize,                // new: lines changed in the PR for this file
-      authorNumCommits,          // new: number of PR-author prior commits on this file
-      authorLastCommitDate,      // new: ISO date or null
-      authorNumReviews,          // new: number of times author reviewed this file before PR
-      authorLastReviewDate,      // new: ISO date or null
-      authorCxFactor,            // null for now (see note below)
+      numKnowledgable,           
+      changeSize,                
+      authorNumCommits,          
+      authorLastCommitDate,      
+      authorNumReviews,          
+      authorLastReviewDate,      
+      authorCxFactor,            
       topContributor,
       isNew: changeType === 'create'
     });
@@ -202,7 +256,8 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt) {
   return fileAnalysis;
 }
 
-async function calculateDetailedReviewerMetrics(prFiles, prAuthor) {
+
+async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLoginMap) {
   console.log('📈 Calculating detailed reviewer metrics...');
   
   const filePaths = prFiles.map(f => f.filename);
@@ -327,27 +382,13 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor) {
   console.log('📅 Getting last activity dates...');
   const activityData = await getLastActivityDatesForPRFiles(contributorLogins, filePaths);
 
-  // Add CxFactor scoring
-  console.log('🎯 Calculating CxFactor scores...');
-  const expertScores = await achrev_suggestion(
-    github.context.payload.pull_request.number,
-    prAuthor,
-    prFiles,
-    20 // Get top 20 for comprehensive analysis
-  );
-
-  // Create a map for easy lookup
   const expertScoreMap = new Map();
-  if (Array.isArray(expertScores)) {
-    expertScores.forEach(expert => {
-      // normalize expected fields and guard against missing props
-      const login = expert.login || expert.github || expert.handle;
-      const cxFactorScore = typeof expert.cxFactorScore === 'number' ? expert.cxFactorScore : (expert.score || 0);
-      const fileCount = typeof expert.fileCount === 'number' ? expert.fileCount : (expert.files || 0);
-      if (login) {
-        expertScoreMap.set(login, { cxFactorScore, fileCount });
-      }
-    });
+  if (achrevByLoginMap && achrevByLoginMap instanceof Map) {
+    for (const [login, info] of achrevByLoginMap) {
+      const cxFactorScore = typeof info.cxFactorScore === 'number' ? info.cxFactorScore : 0;
+      const fileCount = typeof info.fileCount === 'number' ? info.fileCount : (Array.isArray(info.perFile) ? info.perFile.length : 0);
+      expertScoreMap.set(login, { cxFactorScore, fileCount });
+    }
   }
   
   // Combine all metrics (including CxFactor)
