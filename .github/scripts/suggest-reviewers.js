@@ -563,7 +563,7 @@ No developers found with prior experience on these files. Consider assigning rev
 `;
 
     reviewerMetrics.forEach(metrics => {
-      comment += `| ${metrics.login} | ${timeAgo(timemetrics.lastCommitDate)} | ${timeAgo(metrics.lastModificationInPRFiles)} | ${metrics.lCommits} | ${metrics.lReviews} | ${metrics.gCommits} | ${metrics.gReviews} | ${metrics.aMonths} |\n`;
+      comment += `| ${metrics.login} | ${timeAgo(metrics.lastCommitDate)} | ${timeAgo(metrics.lastModificationInPRFiles)} | ${metrics.lCommits} | ${metrics.lReviews} | ${metrics.gCommits} | ${metrics.gReviews} | ${metrics.aMonths} |\n`;
     });
 
     comment += `\n**Timeline Legend:**
