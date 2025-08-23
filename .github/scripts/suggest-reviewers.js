@@ -84,7 +84,7 @@ async function suggestReviewers() {
     const reviewerMetrics = await calculateDetailedReviewerMetrics(prFiles, pr.user.login, achrevByLoginMap);
 
     // 2) Analyze files in detail — pass achrevPerFileMap and reviewerMetrics
-    const fileAnalysis = await analyzeFiles(prFiles, pr.user.login, pr.created_at, achrevPerFileMap, reviewerMetrics);
+    const fileAnalysis = await s(prFiles, pr.user.login, pr.created_at, achrevPerFileMap, reviewerMetrics);
     
     // Generate comprehensive comment
     const comment = generateDetailedComment(fileAnalysis, reviewerMetrics, pr.user.login, prFiles);
@@ -495,12 +495,12 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
   
   **Column descriptions:**
   - **NumKnowledgable**: Number of other developers (excluding PR author) who have prior commits or reviews on this file _before_ the PR creation date.
-  - **Change Size**: Total lines changed in this PR for the file (additions + deletions / GitHub 'changes' field).
+  - **Change Size**: Total lines changed in this PR for the file (additions + deletions).
   - **NumCommit**: Number of earlier commits made by the PR author on this file (excluding the current PR commits).
   - **Last Commit Date**: Date of the author's most recent prior commit on this file.
-  - **NumReview**: Number of times the PR author acted as a reviewer on this file prior to this PR.
+  - **NumReview**: Number of times the PR author acted as a reviewer on this file before this PR.
   - **Last Review Date**: Date of the author's most recent prior review activity on this file.
-  - **Author CxFactor**: Author's per-file normalized CxFactor. A value of 0 means no prior evidence of familiarity on that file.
+  - **Author CxFactor**: Author's per-file normalized CxFactor. A value of 0 means no prior evidence of familiarity with that file.
   `;
   
   // Add enhanced reviewer suggestions with LEARNS column
@@ -514,7 +514,7 @@ No developers found with prior experience on these files. Consider assigning rev
   } else {
     comment += `\n### 👥 Reviewer Candidates
 
-| Developer | Knows | Learns | WorkloadShare% | PercentileRank% | Relative To Mean% | ΔGiniWorkload(Absolute) | AvgTime(h) | AvgSize(line) | line/hour | LastReview | LastReviewOnPRFile |
+| Developer | Knows | Learns | WorkloadShare  | PercentileRank  | Relative To Mean  | ΔGiniWorkload(Absolute) | AvgTime(h) | AvgSize(line) | line/hour | LastReview | LastReviewOnPRFile |
 |-----------|-------|--------|----------------|-----------------|-------------------|-------------------------|------------|---------------|-----------|------------|--------------------|
 `;
 
@@ -536,9 +536,9 @@ No developers found with prior experience on these files. Consider assigning rev
     comment += `\n**Legend:**
 - **Knows**: Files in this PR the reviewer has worked on before  
 - **Learns**: Files in this PR new to the reviewer (${filePaths.length} total - Knows)  
-- **WorkloadShare%**: Percentage of total reviews in the last quarter  
-- **PercentileRank%**: Position in team workload distribution  
-- **Relative To Mean%**: Deviation from the team average workload  
+- **WorkloadShare**: Percentage of total reviews in the last quarter  
+- **PercentileRank**: Position in team workload distribution  
+- **Relative To Mean**: Deviation from the team average workload  
 - **ΔGiniWorkload(Absolute)**: Gini coefficient of workload inequality  
 - **AvgTime(h)**: Average review time in hours  
 - **AvgSize(line)**: Average diff size in lines  
