@@ -15,7 +15,7 @@ namespace RelationalGit.Recommendation
         {
             var totalReviews = pullRequestContext.PullRequestKnowledgeables.Sum(q => q.NumberOfReviews);
 
-            if(totalReviews == 0)
+            if (totalReviews == 0)
             {
                 return 0;
             }

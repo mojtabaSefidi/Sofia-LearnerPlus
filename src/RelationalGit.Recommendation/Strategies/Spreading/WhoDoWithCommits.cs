@@ -110,7 +110,6 @@ namespace RelationalGit.Recommendation
             double final_score_noload = Convert.ToDouble(review_score + commit_score + neighber_commit_score + neighber_review_score);
 
             return final_score;
-
         }
 
         private long GetLoadScore(PullRequestContext pullRequestContext, DeveloperKnowledge reviewer)
@@ -129,7 +128,7 @@ namespace RelationalGit.Recommendation
             var start = pullRequestContext.PullRequest.CreatedAtDateTime;
             var end = pullRequestContext.PullRequest.ClosedAtDateTime;
             var conflict_commits = commits.Where(a => a.AuthorDateTime >= start && a.AuthorDateTime <= end);
-            if(conflict_commits.Count()> 1)
+            if (conflict_commits.Count()> 1)
             {
                 var i = 9;
             }

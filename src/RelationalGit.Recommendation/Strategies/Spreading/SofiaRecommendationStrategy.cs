@@ -72,7 +72,6 @@ namespace RelationalGit.Recommendation
             var specializedKnowledge = reviewedFiles.Count() / (double)pullRequestContext.PullRequestFiles.Length;
 
             var spreadingScore = 0.0;
-
             spreadingScore = reviewerImportance * Math.Pow(probabilityOfStay * effort, _alpha) * Math.Pow(1 - specializedKnowledge, _beta);
 
             return spreadingScore;
