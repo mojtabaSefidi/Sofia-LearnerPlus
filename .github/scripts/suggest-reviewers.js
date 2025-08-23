@@ -48,7 +48,7 @@ async function suggestReviewers() {
     
     console.log(`📁 Found ${prFiles.length} files in PR`);
 
-    // CALL ACHRev
+    // CALL ACHRev (once)
     console.log('🎯 Running ACHRev to compute CxFactor scores...');
 
     let achrevResults = [];
@@ -57,22 +57,18 @@ async function suggestReviewers() {
         pr.number,
         pr.user.login,
         prFiles,
-        200,                  // topN (tune as needed)
-        pr.created_at,        // prCreatedAt -> ensure prior-history only
+        200,
+        pr.created_at,
         { includeAuthor: true, perFileForAuthorOnly: true }
       );
     } catch (err) {
-      // Fail gracefully: log and continue with empty ACHRev results
       console.error('⚠️ achrev_suggestion failed or errored:', err);
       achrevResults = [];
     }
 
-    // Build quick lookup maps:
-    // per-file map keyed by "<login>|<file>" -> per-file object (contains normalizedFileCx and normalizedFileCxByPR)
+    // Build ACHRev maps
     const achrevPerFileMap = new Map();
-    // aggregated map per login -> { cxFactorScore, fileCount, perFile: [...] }
     const achrevByLoginMap = new Map();
-
     if (Array.isArray(achrevResults)) {
       achrevResults.forEach(r => {
         achrevByLoginMap.set(r.login, { cxFactorScore: r.cxFactorScore, fileCount: r.fileCount, perFile: r.perFile });
@@ -84,11 +80,11 @@ async function suggestReviewers() {
       });
     }
 
-    // Analyze files in detail — pass achrevPerFileMap so analyzeFiles can set per-file author CxFactor
-    const fileAnalysis = await analyzeFiles(prFiles, pr.user.login, pr.created_at, achrevPerFileMap);
-    
-    // Calculate detailed reviewer metrics — pass achrevByLoginMap so we don't re-run achrev inside it
+    // 1) Calculate detailed reviewer metrics FIRST (we need these to compute NumKnowledgable per file)
     const reviewerMetrics = await calculateDetailedReviewerMetrics(prFiles, pr.user.login, achrevByLoginMap);
+
+    // 2) Analyze files in detail — pass achrevPerFileMap and reviewerMetrics
+    const fileAnalysis = await analyzeFiles(prFiles, pr.user.login, pr.created_at, achrevPerFileMap, reviewerMetrics);
     
     // Generate comprehensive comment
     const comment = generateDetailedComment(fileAnalysis, reviewerMetrics, pr.user.login, prFiles);
@@ -109,7 +105,7 @@ async function suggestReviewers() {
   }
 }
 
-async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
+async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap, reviewerMetrics) {
   console.log('📊 Analyzing PR files & Author Knowledge...');
 
   const fileAnalysis = [];
@@ -125,32 +121,12 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
           ? prFile.additions + prFile.deletions
           : null );
 
-    // 1) Get contributions on this file by OTHER developers (prior to PR creation date)
-    const { data: fileContributions } = await supabase
-      .from('contributions')
-      .select(`
-        contributor_id,
-        activity_type,
-        contribution_date,
-        contributors!inner(github_login, canonical_name),
-        files!inner(current_path, canonical_path)
-      `)
-      .or(`files.current_path.eq.${filePath},files.canonical_path.eq.${filePath}`)
-      .lt('contribution_date', prCreatedAt) // only _prior_ contributions
-      .neq('contributors.github_login', prAuthor); // exclude PR author for NumKnowledgable
-
-    // Count unique other developers who have prior commits/reviews on this file
-    const uniqueDevs = new Set();
-    if (fileContributions) {
-      fileContributions.forEach(contrib => {
-        const login = contrib.contributors.github_login;
-        if (login) uniqueDevs.add(login);
-      });
-    }
-    const numKnowledgable = uniqueDevs.size;
+    // NOTE: NumKnowledgable will be computed later from reviewerMetrics (keeps logic consistent with "Knows" column)
+    let numKnowledgable = 0; // placeholder; computed in generateDetailedComment
 
     // 2) Get contributions on this file BY THE AUTHOR (prior to PR creation date)
-    const { data: authorContributions } = await supabase
+    // make contribution_date filter conditional if prCreatedAt not provided
+    let authorQuery = supabase
       .from('contributions')
       .select(`
         activity_type,
@@ -160,8 +136,13 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
         files!inner(current_path)
       `)
       .or(`files.current_path.eq.${filePath},files.canonical_path.eq.${filePath}`)
-      .lt('contribution_date', prCreatedAt)
       .eq('contributors.github_login', prAuthor);
+
+    if (prCreatedAt) {
+      authorQuery = authorQuery.lt('contribution_date', prCreatedAt);
+    }
+
+    const { data: authorContributions } = await authorQuery;
 
     // Aggregate author stats for this file
     let authorNumCommits = 0;
@@ -169,7 +150,7 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
     let authorLastCommitDate = null;
     let authorLastReviewDate = null;
 
-    if (authorContributions) {
+    if (authorContributions && Array.isArray(authorContributions)) {
       authorContributions.forEach(ac => {
         const dt = ac.contribution_date ? new Date(ac.contribution_date) : null;
         if (ac.activity_type === 'commit') {
@@ -190,42 +171,54 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
     authorLastCommitDate = authorLastCommitDate ? authorLastCommitDate.toISOString() : null;
     authorLastReviewDate = authorLastReviewDate ? authorLastReviewDate.toISOString() : null;
 
-    // lookup per-file normalized CxFactor for the author if provided ---
-    let authorCxFactor = null;
+    // lookup per-file normalized CxFactor for the author if provided; default to 0 when absent
+    let authorCxFactor = 0; // default 0 (per your requirement)
     try {
       if (achrevPerFileMap && achrevPerFileMap instanceof Map) {
         const per = achrevPerFileMap.get(`${prAuthor}|${filePath}`);
         if (per) {
-          // prefer per.normalizedFileCx (0..1); fallback to normalizedFileCxByPR if available
           if (typeof per.normalizedFileCx === 'number') {
             authorCxFactor = per.normalizedFileCx;
           } else if (typeof per.normalizedFileCxByPR === 'number') {
             authorCxFactor = per.normalizedFileCxByPR;
           } else if (typeof per.fileScore === 'number') {
-            // last-resort: convert raw 0..5 to 0..1
             authorCxFactor = per.fileScore / 5;
           } else {
-            authorCxFactor = null;
+            authorCxFactor = 0;
           }
+        } else {
+          authorCxFactor = 0;
         }
       }
     } catch (err) {
-      // defensive: do not throw here; keep null and continue
       console.warn(`⚠️ achrevPerFileMap lookup failed for ${prAuthor}|${filePath}:`, err);
-      authorCxFactor = null;
+      authorCxFactor = 0;
     }
 
+    // Keep topContributor if you still want it internally
     let topContributor = null;
-    if (fileContributions && fileContributions.length > 0) {
+    // compute topContributor from contributions of other devs (optional)
+    const { data: fileContributionsForTop } = await supabase
+      .from('contributions')
+      .select(`
+        contributor_id,
+        activity_type,
+        contribution_date,
+        contributors!inner(github_login, canonical_name),
+        files!inner(current_path, canonical_path)
+      `)
+      .or(`files.current_path.eq.${filePath},files.canonical_path.eq.${filePath}`)
+      .lt('contribution_date', prCreatedAt);
+
+    if (fileContributionsForTop && fileContributionsForTop.length > 0) {
       const commits = new Map();
       const reviews = new Map();
-      fileContributions.forEach(c => {
-        const login = c.contributors.github_login;
+      fileContributionsForTop.forEach(c => {
+        const login = c.contributors && c.contributors.github_login;
         if (!login) return;
         if (c.activity_type === 'commit') commits.set(login, (commits.get(login)||0)+1);
         if (c.activity_type === 'review') reviews.set(login, (reviews.get(login)||0)+1);
       });
-      // pick top by commits+reviews
       let best = null, bestCount = -1;
       commits.forEach((cCount, login) => {
         const rCount = reviews.get(login) || 0;
@@ -241,13 +234,13 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
     fileAnalysis.push({
       filename: filePath,
       changeType,
-      numKnowledgable,           
-      changeSize,                
-      authorNumCommits,          
-      authorLastCommitDate,      
-      authorNumReviews,          
-      authorLastReviewDate,      
-      authorCxFactor,            
+      numKnowledgable,           // placeholder; replaced in generateDetailedComment
+      changeSize,
+      authorNumCommits: authorNumCommits || 0,
+      authorLastCommitDate,
+      authorNumReviews: authorNumReviews || 0,
+      authorLastReviewDate,
+      authorCxFactor,            // guaranteed numeric (0..1)
       topContributor,
       isNew: changeType === 'create'
     });
@@ -255,7 +248,6 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
 
   return fileAnalysis;
 }
-
 
 async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLoginMap) {
   console.log('📈 Calculating detailed reviewer metrics...');
@@ -440,9 +432,20 @@ function getChangeType(prFile) {
 
 function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFiles) {
   const filePaths = prFiles.map(f => f.filename);
-  let comment = `## 📊 Pull Request Analysis
 
-### 📁 Files Modified in this PR
+  // Build a map filePath -> number of developers who know that file (based on reviewerMetrics knownFilesList)
+  const fileKnownCount = new Map();
+  if (Array.isArray(reviewerMetrics)) {
+    reviewerMetrics.forEach(m => {
+      if (Array.isArray(m.knownFilesList)) {
+        m.knownFilesList.forEach(f => {
+          fileKnownCount.set(f, (fileKnownCount.get(f) || 0) + 1);
+        });
+      }
+    });
+  }
+
+  let comment = `## 📊 Pull Request Analysis
 
 ### Author Knowledge: @${prAuthor}
 
@@ -454,23 +457,33 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
   const abandonedFiles = [];
   const hoardedFiles = [];
 
+  // helpers
+  const formatDate = (iso) => {
+    if (!iso) return 'N/A';
+    const d = new Date(iso);
+    return isNaN(d) ? 'N/A' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
   fileAnalysis.forEach(file => {
-    // Format author dates
-    const formatDate = (iso) => {
-      if (!iso) return 'N/A';
-      const d = new Date(iso);
-      return isNaN(d) ? 'N/A' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    };
+    // Compute NumKnowledgable using reviewerMetrics map (ensures same logic as Knows)
+    const numKnow = fileKnownCount.get(file.filename) || 0;
 
     const changeSizeText = (typeof file.changeSize === 'number') ? file.changeSize : 'N/A';
-    const cxText = (file.authorCxFactor === null || file.authorCxFactor === undefined) ? 'N/A' : file.authorCxFactor.toFixed(3);
+    const numCommits = (typeof file.authorNumCommits === 'number') ? file.authorNumCommits : 0;
+    const numReviews = (typeof file.authorNumReviews === 'number') ? file.authorNumReviews : 0;
 
-    comment += `| \`${file.filename}\` | ${file.changeType} | ${file.numKnowledgable} | ${changeSizeText} | ${file.authorNumCommits} | ${formatDate(file.authorLastCommitDate)} | ${file.authorNumReviews} | ${formatDate(file.authorLastReviewDate)} | ${cxText} |\n`;
+    // Author CxFactor: ensure numeric and show 0 when absent
+    const cxVal = (typeof file.authorCxFactor === 'number' && !isNaN(file.authorCxFactor))
+      ? file.authorCxFactor
+      : 0;
+    const cxText = typeof cxVal === 'number' ? cxVal.toFixed(3) : '0.000';
 
-    // Categorize files (abandoned/hoarded logic: keep using numKnowledgable)
-    if (file.numKnowledgable === 0) {
+    comment += `| \`${file.filename}\` | ${file.changeType} | ${numKnow} | ${changeSizeText} | ${numCommits} | ${formatDate(file.authorLastCommitDate)} | ${numReviews} | ${formatDate(file.authorLastReviewDate)} | ${cxText} |\n`;
+
+    // Categorize files (abandoned/hoarded logic uses numKnow)
+    if (numKnow === 0) {
       abandonedFiles.push(file.filename);
-    } else if (file.numKnowledgable === 1 && file.topContributor) {
+    } else if (numKnow === 1 && file.topContributor) {
       hoardedFiles.push({
         filename: file.filename,
         owner: file.topContributor.login
@@ -481,13 +494,13 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
   comment += `
   
   **Column descriptions:**
-  - **NumKnowledgable**: Number of other developers (excluding PR author) who have prior commits or reviews on this file _before_ the PR creation date.
+  - **NumKnowledgable**: Number of other developers (excluding PR author) who have prior commits or reviews on this file _before_ the PR creation date (computed from the reviewer candidates 'Knows' lists).
   - **Change Size**: Total lines changed in this PR for the file (additions + deletions / GitHub 'changes' field).
   - **NumCommit**: Number of earlier commits made by the PR author on this file (excluding the current PR commits).
   - **Last Commit Date**: Date of the author's most recent prior commit on this file.
   - **NumReview**: Number of times the PR author acted as a reviewer on this file prior to this PR.
   - **Last Review Date**: Date of the author's most recent prior review activity on this file.
-  - **Author CxFactor**: Author's CxFactor **for this file** (N/A unless the achrev/ACHRev call is extended to return per-file CxFactor — see note).
+  - **Author CxFactor**: Author's per-file normalized CxFactor (0..1). A value of `0` means no prior evidence of familiarity on that file.
   `;
   
   // Add enhanced reviewer suggestions with LEARNS column
