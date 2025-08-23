@@ -15,6 +15,29 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
+const timeAgo = (dateStr) => {
+  if (!dateStr) return 'No Activity';
+
+  const d = new Date(dateStr);
+  if (isNaN(d)) return 'No Activity';
+
+  const now = new Date();
+  let diffMs = now - d; // difference in milliseconds
+
+  if (diffMs < 0) return 'In the future'; // optional: handle future dates
+
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  diffMs -= diffDays * (1000 * 60 * 60 * 24);
+
+  const diffHours = Math.round(diffMs / (1000 * 60 * 60)); // round hours
+
+  let result = '';
+  if (diffDays > 0) result += `${diffDays} day${diffDays > 1 ? 's' : ''} `;
+  result += `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+
+  return result;
+};
+
 async function suggestReviewers() {
   console.log('🔍 Analyzing PR for detailed reviewer suggestions...');
   
@@ -193,23 +216,10 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
     }
 
     //  dates to ISO strings for later formatting (or null)
-    authorLastCommitDate = authorLastCommitDate ? authorLastCommitDate.toISOString() : 'No Commits';
-    authorLastReviewDate = authorLastReviewDate ? authorLastReviewDate.toISOString() : 'No Reviews';
+    
+    authorLastCommitDate = timeAgo(authorLastCommitDate)
+    authorLastReviewDate = timeAgo(authorLastReviewDate)
 
-    // console.log("File Path:", filePath);
-    // console.log("prCreatedAt:", prCreatedAt);
-    // console.log("Author:", prAuthor);
-    // console.log("fileContributions includes data?", fileContributions && fileContributions.length > 0);
-    // console.log("Unique Developers:", Array.from(uniqueDevs));
-    // console.log("Number of Knowledgable Developers:", numKnowledgable);
-    // console.log("authorContributions includes data?", authorContributions && authorContributions.length > 0);
-    // console.log("Author Number of Commits:", authorNumCommits);
-    // console.log("Author Number of Reviews:", authorNumReviews);
-    // console.log("Author Last Commit Date:", authorLastCommitDate);
-    // console.log("Author Last Review Date:", authorLastReviewDate);
-    // console.log("------NEW3------");
-
-    // lookup per-file normalized CxFactor for the author if provided ---
     let authorCxFactor = 0; // Default to 0 instead of null
     try {
       if (achrevPerFileMap && achrevPerFileMap instanceof Map) {
@@ -460,7 +470,7 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
     const changeSizeText = (typeof file.changeSize === 'number') ? file.changeSize : 'N/A';
     const cxText = (typeof file.authorCxFactor === 'number') ? file.authorCxFactor.toFixed(3) : '0.000';
 
-    comment += `| \`${file.filename}\` | ${file.changeType} | ${file.numKnowledgable} | ${changeSizeText} | ${file.authorNumCommits} | ${file.authorLastCommitDate} | ${file.authorNumReviews} | ${file.authorLastReviewDate} | ${cxText} |\n`;
+    comment += `| \`${file.filename}\` | ${file.changeType} | ${file.numKnowledgable} | ${changeSizeText} | ${file.authorNumCommits} | ${timeAgo(file.authorLastCommitDate)} | ${file.authorNumReviews} | ${timeAgo(file.authorLastReviewDate)} | ${cxText} |\n`;
 
     // Categorize files (abandoned/hoarded logic: keep using numKnowledgable)
     // if (file.numKnowledgable === 0) {
@@ -512,7 +522,7 @@ No developers found with prior experience on these files. Consider assigning rev
       typeof num === 'number' && !isNaN(num) ? num.toFixed(decimals) : '0.0';
 
     reviewerMetrics.forEach(metrics => {
-      comment += `| ${metrics.login} | ${metrics.knows} | ${metrics.learns} | ${formatNumber(metrics.workloadShare)} | ${formatNumber(metrics.percentileRank)} | ${formatNumber(metrics.relativeToMean)} | ${formatNumber(metrics.giniWorkload)} | ${formatNumber(metrics.avgReviewTimeHours)} | ${Math.round(metrics.avgReviewSizeLines)} | ${formatNumber(metrics.linesPerHour)} | ${metrics.lastReviewDate} | ${metrics.lastReviewInPRFiles} |\n`;
+      comment += `| ${metrics.login} | ${metrics.knows} | ${metrics.learns} | ${formatNumber(metrics.workloadShare)} | ${formatNumber(metrics.percentileRank)} | ${formatNumber(metrics.relativeToMean)} | ${formatNumber(metrics.giniWorkload)} | ${formatNumber(metrics.avgReviewTimeHours)} | ${Math.round(metrics.avgReviewSizeLines)} | ${formatNumber(metrics.linesPerHour)} | ${timeAgo(metrics.lastReviewDate)} | ${timeAgo(metrics.lastReviewInPRFiles)} |\n`;
     });
 
     comment += `\n**Legend:**
