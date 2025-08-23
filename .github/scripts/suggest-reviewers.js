@@ -217,8 +217,8 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
 
     //  dates to ISO strings for later formatting (or null)
     
-    authorLastCommitDate = timeAgo(authorLastCommitDate)
-    authorLastReviewDate = timeAgo(authorLastReviewDate)
+    authorLastCommitDate = timeAgo(authorLastCommitDate.toISOString())
+    authorLastReviewDate = timeAgo(authorLastReviewDate.toISOString())
 
     let authorCxFactor = 0; // Default to 0 instead of null
     try {
@@ -470,7 +470,7 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
     const changeSizeText = (typeof file.changeSize === 'number') ? file.changeSize : 'N/A';
     const cxText = (typeof file.authorCxFactor === 'number') ? file.authorCxFactor.toFixed(3) : '0.000';
 
-    comment += `| \`${file.filename}\` | ${file.changeType} | ${file.numKnowledgable} | ${changeSizeText} | ${file.authorNumCommits} | ${timeAgo(file.authorLastCommitDate)} | ${file.authorNumReviews} | ${timeAgo(file.authorLastReviewDate)} | ${cxText} |\n`;
+    comment += `| \`${file.filename}\` | ${file.changeType} | ${file.numKnowledgable} | ${changeSizeText} | ${file.authorNumCommits} | ${timeAgo(file.authorLastCommitDate.toISOString())} | ${file.authorNumReviews} | ${timeAgo(file.authorLastReviewDate.toISOString())} | ${cxText} |\n`;
 
     // Categorize files (abandoned/hoarded logic: keep using numKnowledgable)
     // if (file.numKnowledgable === 0) {
@@ -522,7 +522,7 @@ No developers found with prior experience on these files. Consider assigning rev
       typeof num === 'number' && !isNaN(num) ? num.toFixed(decimals) : '0.0';
 
     reviewerMetrics.forEach(metrics => {
-      comment += `| ${metrics.login} | ${metrics.knows} | ${metrics.learns} | ${formatNumber(metrics.workloadShare)} | ${formatNumber(metrics.percentileRank)} | ${formatNumber(metrics.relativeToMean)} | ${formatNumber(metrics.giniWorkload)} | ${formatNumber(metrics.avgReviewTimeHours)} | ${Math.round(metrics.avgReviewSizeLines)} | ${formatNumber(metrics.linesPerHour)} | ${timeAgo(metrics.lastReviewDate)} | ${timeAgo(metrics.lastReviewInPRFiles)} |\n`;
+      comment += `| ${metrics.login} | ${metrics.knows} | ${metrics.learns} | ${formatNumber(metrics.workloadShare)} | ${formatNumber(metrics.percentileRank)} | ${formatNumber(metrics.relativeToMean)} | ${formatNumber(metrics.giniWorkload)} | ${formatNumber(metrics.avgReviewTimeHours)} | ${Math.round(metrics.avgReviewSizeLines)} | ${formatNumber(metrics.linesPerHour)} | ${timeAgo(metrics.lastReviewDate.toISOString())} | ${timeAgo(metrics.lastReviewInPRFiles.toISOString())} |\n`;
     });
 
     comment += `\n**Legend:**
