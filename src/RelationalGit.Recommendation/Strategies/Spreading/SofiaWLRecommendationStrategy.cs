@@ -49,7 +49,6 @@ namespace RelationalGit.Recommendation
             return spreadingScore;
         }
 
-
         private double ComputeBirdReviewerScore(PullRequestContext pullRequestContext, DeveloperKnowledge reviewer)
         {
             double? commit_score = 0.0;
@@ -92,7 +91,7 @@ namespace RelationalGit.Recommendation
             var options = recommenderOption.Split(',');
             var alphaOption = options.FirstOrDefault(q => q.StartsWith("alpha")).Substring("alpha".Length + 1);
             var betaOption = options.FirstOrDefault(q => q.StartsWith("beta")).Substring("beta".Length + 1);
-            var riskOwenershipThreshold = options.FirstOrDefault(q => q.StartsWith("risk")).Substring("risk".Length+1);
+            var riskOwenershipThreshold = options.FirstOrDefault(q => q.StartsWith("risk")).Substring("risk".Length + 1);
             var hoarderRatioOption = options.FirstOrDefault(q => q.StartsWith("hoarder_ratio")).Substring("hoarder_ratio".Length + 1);
 
             return (double.Parse(alphaOption), double.Parse(betaOption), int.Parse(riskOwenershipThreshold), double.Parse(hoarderRatioOption));
@@ -146,7 +145,6 @@ namespace RelationalGit.Recommendation
             {
                 return score;
             }
-
 
             if (reviewer_recency != DateTime.MinValue)
             {
