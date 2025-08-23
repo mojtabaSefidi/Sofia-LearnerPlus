@@ -197,6 +197,8 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
     authorLastReviewDate = authorLastReviewDate ? authorLastReviewDate.toISOString() : null;
 
     console.log("File Path:", filePath);
+    console.log("prCreatedAt:", prCreatedAt);
+    console.log("Author:", prAuthor);
     console.log("fileContributions includes data?", fileContributions && fileContributions.length > 0);
     console.log("Unique Developers:", Array.from(uniqueDevs));
     console.log("Number of Knowledgable Developers:", numKnowledgable);
