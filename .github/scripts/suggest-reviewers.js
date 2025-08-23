@@ -15,11 +15,12 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
-const timeAgo = (dateStr) => {
-  if (!dateStr) return 'No Activity';
+const timeAgo = (dateInput) => {
+  if (!dateInput) return 'No Activity';
 
-  const d = new Date(dateStr);
-  if (isNaN(d)) return 'No Activity';
+  // Handle both Date objects and date strings
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (isNaN(d.getTime())) return 'No Activity';
 
   const now = new Date();
   let diffMs = now - d; // difference in milliseconds
@@ -214,11 +215,6 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
         }
       });
     }
-
-    //  dates to ISO strings for later formatting (or null)
-    
-    authorLastCommitDate = timeAgo(authorLastCommitDate.toISOString())
-    authorLastReviewDate = timeAgo(authorLastReviewDate.toISOString())
 
     let authorCxFactor = 0; // Default to 0 instead of null
     try {
@@ -470,7 +466,7 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
     const changeSizeText = (typeof file.changeSize === 'number') ? file.changeSize : 'N/A';
     const cxText = (typeof file.authorCxFactor === 'number') ? file.authorCxFactor.toFixed(3) : '0.000';
 
-    comment += `| \`${file.filename}\` | ${file.changeType} | ${file.numKnowledgable} | ${changeSizeText} | ${file.authorNumCommits} | ${timeAgo(file.authorLastCommitDate.toISOString())} | ${file.authorNumReviews} | ${timeAgo(file.authorLastReviewDate.toISOString())} | ${cxText} |\n`;
+    comment += `| \`${file.filename}\` | ${file.changeType} | ${file.numKnowledgable} | ${changeSizeText} | ${file.authorNumCommits} | ${timeAgo(file.authorLastCommitDate)} | ${file.authorNumReviews} | ${timeAgo(file.authorLastReviewDate)} | ${cxText} |\n`;
 
     // Categorize files (abandoned/hoarded logic: keep using numKnowledgable)
     // if (file.numKnowledgable === 0) {
@@ -522,7 +518,7 @@ No developers found with prior experience on these files. Consider assigning rev
       typeof num === 'number' && !isNaN(num) ? num.toFixed(decimals) : '0.0';
 
     reviewerMetrics.forEach(metrics => {
-      comment += `| ${metrics.login} | ${metrics.knows} | ${metrics.learns} | ${formatNumber(metrics.workloadShare)} | ${formatNumber(metrics.percentileRank)} | ${formatNumber(metrics.relativeToMean)} | ${formatNumber(metrics.giniWorkload)} | ${formatNumber(metrics.avgReviewTimeHours)} | ${Math.round(metrics.avgReviewSizeLines)} | ${formatNumber(metrics.linesPerHour)} | ${timeAgo(metrics.lastReviewDate.toISOString())} | ${timeAgo(metrics.lastReviewInPRFiles.toISOString())} |\n`;
+      comment += `| ${metrics.login} | ${metrics.knows} | ${metrics.learns} | ${formatNumber(metrics.workloadShare)} | ${formatNumber(metrics.percentileRank)} | ${formatNumber(metrics.relativeToMean)} | ${formatNumber(metrics.giniWorkload)} | ${formatNumber(metrics.avgReviewTimeHours)} | ${Math.round(metrics.avgReviewSizeLines)} | ${formatNumber(metrics.linesPerHour)} | ${timeAgo(metrics.lastReviewDate)} | ${timeAgo(metrics.lastReviewInPRFiles)} |\n`;
     });
 
     comment += `\n**Legend:**
