@@ -192,7 +192,7 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
       });
     }
 
-    // Format dates to ISO strings for later formatting (or null)
+    //  dates to ISO strings for later formatting (or null)
     authorLastCommitDate = authorLastCommitDate ? authorLastCommitDate.toISOString() : 'No Commits';
     authorLastReviewDate = authorLastReviewDate ? authorLastReviewDate.toISOString() : 'No Reviews';
 
@@ -512,7 +512,7 @@ No developers found with prior experience on these files. Consider assigning rev
       typeof num === 'number' && !isNaN(num) ? num.toFixed(decimals) : '0.0';
 
     reviewerMetrics.forEach(metrics => {
-      comment += `| ${metrics.login} | ${metrics.knows} | ${metrics.learns} | ${formatNumber(metrics.workloadShare)} | ${formatNumber(metrics.percentileRank)} | ${formatNumber(metrics.relativeToMean)} | ${formatNumber(metrics.giniWorkload)} | ${formatNumber(metrics.avgReviewTimeHours)} | ${Math.round(metrics.avgReviewSizeLines)} | ${formatNumber(metrics.linesPerHour)} | ${formatDate(metrics.lastReviewDate)} | ${formatDate(metrics.lastReviewInPRFiles)} |\n`;
+      comment += `| ${metrics.login} | ${metrics.knows} | ${metrics.learns} | ${formatNumber(metrics.workloadShare)} | ${formatNumber(metrics.percentileRank)} | ${formatNumber(metrics.relativeToMean)} | ${formatNumber(metrics.giniWorkload)} | ${formatNumber(metrics.avgReviewTimeHours)} | ${Math.round(metrics.avgReviewSizeLines)} | ${formatNumber(metrics.linesPerHour)} | ${metrics.lastReviewDate} | ${metrics.lastReviewInPRFiles} |\n`;
     });
 
     comment += `\n**Legend:**
@@ -557,7 +557,7 @@ No developers found with prior experience on these files. Consider assigning rev
 `;
 
     reviewerMetrics.forEach(metrics => {
-      comment += `| ${metrics.login} | ${formatDate(metrics.lastCommitDate)} | ${formatDate(metrics.lastModificationInPRFiles)} | ${metrics.lCommits} | ${metrics.lReviews} | ${metrics.gCommits} | ${metrics.gReviews} | ${metrics.aMonths} |\n`;
+      comment += `| ${metrics.login} | ${metrics.lastCommitDate} | ${metrics.lastModificationInPRFiles} | ${metrics.lCommits} | ${metrics.lReviews} | ${metrics.gCommits} | ${metrics.gReviews} | ${metrics.aMonths} |\n`;
     });
 
     comment += `\n**Timeline Legend:**
