@@ -456,27 +456,12 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
   const hoardedFiles = [];
 
   fileAnalysis.forEach(file => {
-    // Format author dates
-    const formatDate = (iso) => {
-      if (!iso) return 'N/A';
-      const d = new Date(iso);
-      return isNaN(d) ? 'N/A' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    };
 
     const changeSizeText = (typeof file.changeSize === 'number') ? file.changeSize : 'N/A';
     const cxText = (typeof file.authorCxFactor === 'number') ? file.authorCxFactor.toFixed(3) : '0.000';
 
     comment += `| \`${file.filename}\` | ${file.changeType} | ${file.numKnowledgable} | ${changeSizeText} | ${file.authorNumCommits} | ${timeAgo(file.authorLastCommitDate)} | ${file.authorNumReviews} | ${timeAgo(file.authorLastReviewDate)} | ${cxText} |\n`;
 
-    // Categorize files (abandoned/hoarded logic: keep using numKnowledgable)
-    // if (file.numKnowledgable === 0) {
-    //   abandonedFiles.push(file.filename);
-    // } else if (file.numKnowledgable === 1 && file.topContributor) {
-    //   hoardedFiles.push({
-    //     filename: file.filename,
-    //     owner: file.topContributor.login
-    //   });
-    // }
   });
 
   comment += `
@@ -493,37 +478,36 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
   
   // Add enhanced reviewer suggestions with LEARNS column
   if (reviewerMetrics.length === 0) {
-    comment += `\n### 👥 Reviewer Suggestions
+    comment += `\n### 👥 Reviewer Records
 
 No developers found with prior experience on these files. Consider assigning reviewers based on:
 - Team responsibilities
 - Code architecture knowledge
 - Subject matter expertise`;
   } else {
-    comment += `\n### 👥 Reviewer Candidates
+    comment += `\n### 👥 Reviewer Records
 
-| Developer | Knows | Learns | Workload Share | Percentile Rank  | Relative To Mean | ΔGiniWorkload(Absolute) | AvgTime(h) | AvgSize(line) | line/hour | LastReview | LastReviewOnPRFile |
-|-----------|-------|--------|----------------|-----------------|-------------------|-------------------------|------------|---------------|-----------|------------|--------------------|
+| Developer | Knows | Learns | LastCommit | LastModificationOnPR | PR-Commits | Total-Commits | PR-Reviews | Total-Reviews | A-Months | Workload Share | Percentile Rank | Relative To Mean | ΔGiniWorkload(Absolute) | AvgTime(h) | AvgSize(line) | line/hour |
+|-----------|-------|--------|------------|----------------------|------------|---------------|------------|---------------|----------|----------------|-----------------|------------------|-------------------------|------------|---------------|-----------|
 `;
-
-    // helpers
-    const formatDate = (dateStr) => {
-      const d = new Date(dateStr);
-      return dateStr && !isNaN(d)
-        ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-        : 'N/A';
-    };
 
     const formatNumber = (num, decimals = 1) =>
       typeof num === 'number' && !isNaN(num) ? num.toFixed(decimals) : '0.0';
 
     reviewerMetrics.forEach(metrics => {
-      comment += `| ${metrics.login} | ${metrics.knows} | ${metrics.learns} | ${formatNumber(metrics.workloadShare)} | ${formatNumber(metrics.percentileRank)} | ${formatNumber(metrics.relativeToMean)} | ${formatNumber(metrics.giniWorkload)} | ${formatNumber(metrics.avgReviewTimeHours)} | ${Math.round(metrics.avgReviewSizeLines)} | ${formatNumber(metrics.linesPerHour)} | ${timeAgo(metrics.lastReviewDate)} | ${timeAgo(metrics.lastReviewInPRFiles)} |\n`;
+      comment += `| ${metrics.login} | ${metrics.knows} | ${metrics.learns} | ${timeAgo(metrics.lastCommitDate)} | ${timeAgo(metrics.lastModificationInPRFiles)} | ${metrics.lCommits} | ${metrics.gCommits} | ${metrics.lReviews} | ${metrics.gReviews} | ${metrics.aMonths} | ${formatNumber(metrics.workloadShare)} | ${formatNumber(metrics.percentileRank)} | ${formatNumber(metrics.relativeToMean)} | ${formatNumber(metrics.giniWorkload)} | ${formatNumber(metrics.avgReviewTimeHours)} | ${Math.round(metrics.avgReviewSizeLines)} | ${formatNumber(metrics.linesPerHour)} |\n`;
     });
 
-    comment += `\n**Legend:**
+    comment += `\n**Columns Description:**
 - **Knows**: Files in this PR the reviewer has worked on before  
 - **Learns**: Files in this PR new to the reviewer (${filePaths.length} total - Knows)  
+- **LastCommit**: Date of last commit (any file, all time)
+- **LastModificationOnPR**: Date of last modification in any of this PR's files (all time)
+- **PR-Commits**: Number of commits on files in this PR
+- **Total-Commits**: Total commits in the last year
+- **PR-Reviews**: Number of reviews on files in this PR
+- **Total-Reviews**: Total reviews in the last year
+- **A-Months**: Active months in the last year
 - **Workload Share**: Percentage of total reviews in the last quarter  
 - **Percentile Rank**: Position in team workload distribution  
 - **Relative To Mean**: Deviation from the team average workload  
@@ -531,8 +515,6 @@ No developers found with prior experience on these files. Consider assigning rev
 - **AvgTime(h)**: Average review time in hours  
 - **AvgSize(line)**: Average diff size in lines  
 - **line/hour**: Lines reviewed per hour  
-- **LastReview**: Date of last review activity  
-- **LastReviewOnPRFile**: Date of last review on any file in this PR  
 `;
 
     const cxFactorScores = reviewerMetrics
@@ -552,30 +534,6 @@ No developers found with prior experience on these files. Consider assigning rev
       comment += `\n**CxFactor Score**: ACHRev expertise score (0-1) based on review history, commit history, work patterns, and recency of contributions on PR files.
 `;
     }
-
-    // Additional metrics section
-    comment += `<details>
-<summary>📊 Additional Metrics & Activity Timeline</summary>
-
-### Activity Timeline
-| Developer | LastCommit | LastModificationOnPR | L-Commits | L-Reviews | G-Commits | G-Reviews | A-Months |
-|-----------|------------|----------------------|-----------|-----------|-----------|-----------|----------|
-`;
-
-    reviewerMetrics.forEach(metrics => {
-      comment += `| ${metrics.login} | ${timeAgo(metrics.lastCommitDate)} | ${timeAgo(metrics.lastModificationInPRFiles)} | ${metrics.lCommits} | ${metrics.lReviews} | ${metrics.gCommits} | ${metrics.gReviews} | ${metrics.aMonths} |\n`;
-    });
-
-    comment += `\n**Timeline Legend:**
-- **LastCommit**: Date of last commit (any file, all time)
-- **LastModificationOnPR**: Date of last modification in any of this PR's files (all time)
-- **L-Commits**: Local commits on known files (all time)
-- **L-Reviews**: Local reviews on known files (all time)
-- **G-Commits**: Global commits in the last year
-- **G-Reviews**: Global reviews in the last year
-- **A-Months**: Active months in the last year
-
-`;
     
 // ### File Knowledge Breakdown
 //     reviewerMetrics.forEach(metrics => {
@@ -588,7 +546,6 @@ No developers found with prior experience on these files. Consider assigning rev
 //       }
 //     });
     
-    comment += `</details>`;
   }
   
   comment += `\n---
