@@ -439,7 +439,7 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
   const filePaths = prFiles.map(f => f.filename);
   let comment = `## 📊 Pull Request Analysis
 
-### Author Knowledge: @${prAuthor}
+### Author Knowledge: ${prAuthor}
 
 | ChangedFile | Change Type | NumKnowledgable | Change Size | NumCommit | Last Commit Date | NumReview | Last Review Date | Author CxFactor |
 |-------------|-------------|-----------------|-------------|-----------|------------------|-----------|------------------|-----------------|
@@ -512,7 +512,7 @@ No developers found with prior experience on these files. Consider assigning rev
       typeof num === 'number' && !isNaN(num) ? num.toFixed(decimals) : '0.0';
 
     reviewerMetrics.forEach(metrics => {
-      comment += `| @${metrics.login} | ${metrics.knows} | ${metrics.learns} | ${formatNumber(metrics.workloadShare)} | ${formatNumber(metrics.percentileRank)} | ${formatNumber(metrics.relativeToMean)} | ${formatNumber(metrics.giniWorkload)} | ${formatNumber(metrics.avgReviewTimeHours)} | ${Math.round(metrics.avgReviewSizeLines)} | ${formatNumber(metrics.linesPerHour)} | ${formatDate(metrics.lastReviewDate)} | ${formatDate(metrics.lastReviewInPRFiles)} |\n`;
+      comment += `| ${metrics.login} | ${metrics.knows} | ${metrics.learns} | ${formatNumber(metrics.workloadShare)} | ${formatNumber(metrics.percentileRank)} | ${formatNumber(metrics.relativeToMean)} | ${formatNumber(metrics.giniWorkload)} | ${formatNumber(metrics.avgReviewTimeHours)} | ${Math.round(metrics.avgReviewSizeLines)} | ${formatNumber(metrics.linesPerHour)} | ${formatDate(metrics.lastReviewDate)} | ${formatDate(metrics.lastReviewInPRFiles)} |\n`;
     });
 
     comment += `\n**Legend:**
@@ -540,7 +540,7 @@ No developers found with prior experience on these files. Consider assigning rev
 `;
 
       cxFactorScores.forEach(metrics => {
-        comment += `| @${metrics.login} | ${(metrics.cxFactorScore || 0).toFixed(3)} |\n`;
+        comment += `| ${metrics.login} | ${(metrics.cxFactorScore || 0).toFixed(3)} |\n`;
       });
 
       comment += `\n**CxFactor Score**: ACHRev expertise score (0-1) based on review history, commit history, work patterns, and recency of contributions on PR files.
@@ -557,7 +557,7 @@ No developers found with prior experience on these files. Consider assigning rev
 `;
 
     reviewerMetrics.forEach(metrics => {
-      comment += `| @${metrics.login} | ${formatDate(metrics.lastCommitDate)} | ${formatDate(metrics.lastModificationInPRFiles)} | ${metrics.lCommits} | ${metrics.lReviews} | ${metrics.gCommits} | ${metrics.gReviews} | ${metrics.aMonths} |\n`;
+      comment += `| ${metrics.login} | ${formatDate(metrics.lastCommitDate)} | ${formatDate(metrics.lastModificationInPRFiles)} | ${metrics.lCommits} | ${metrics.lReviews} | ${metrics.gCommits} | ${metrics.gReviews} | ${metrics.aMonths} |\n`;
     });
 
     comment += `\n**Timeline Legend:**
@@ -574,7 +574,7 @@ No developers found with prior experience on these files. Consider assigning rev
 // ### File Knowledge Breakdown
 //     reviewerMetrics.forEach(metrics => {
 //       if (metrics.knownFilesList.length > 0) {
-//         comment += `**@${metrics.login}** knows these files:\n`;
+//         comment += `**${metrics.login}** knows these files:\n`;
 //         metrics.knownFilesList.forEach(file => {
 //           comment += `- \`${file}\`\n`;
 //         });
@@ -588,7 +588,7 @@ No developers found with prior experience on these files. Consider assigning rev
   comment += `\n---
 *This enhanced analysis includes workload distribution metrics and performance indicators from the last quarter (3 months). Workload metrics help ensure fair distribution of review responsibilities across the team.*
 
-*Generated for PR by @${prAuthor}*`;
+*Generated for PR by ${prAuthor}*`;
   
   return comment;
 }
