@@ -168,8 +168,8 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
     // Aggregate author stats for this file
     let authorNumCommits = 0;
     let authorNumReviews = 0;
-    let authorLastCommitDate = null;
-    let authorLastReviewDate = null;
+    let authorLastCommitDate = No Commits;
+    let authorLastReviewDate = No Reviews;
 
     if (authorContributions && Array.isArray(authorContributions)) {
       authorContributions.forEach(ac => {
@@ -196,18 +196,18 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
     authorLastCommitDate = authorLastCommitDate ? authorLastCommitDate.toISOString() : null;
     authorLastReviewDate = authorLastReviewDate ? authorLastReviewDate.toISOString() : null;
 
-    console.log("File Path:", filePath);
-    console.log("prCreatedAt:", prCreatedAt);
-    console.log("Author:", prAuthor);
-    console.log("fileContributions includes data?", fileContributions && fileContributions.length > 0);
-    console.log("Unique Developers:", Array.from(uniqueDevs));
-    console.log("Number of Knowledgable Developers:", numKnowledgable);
-    console.log("authorContributions includes data?", authorContributions && authorContributions.length > 0);
-    console.log("Author Number of Commits:", authorNumCommits);
-    console.log("Author Number of Reviews:", authorNumReviews);
-    console.log("Author Last Commit Date:", authorLastCommitDate);
-    console.log("Author Last Review Date:", authorLastReviewDate);
-    console.log("------NEW3------");
+    // console.log("File Path:", filePath);
+    // console.log("prCreatedAt:", prCreatedAt);
+    // console.log("Author:", prAuthor);
+    // console.log("fileContributions includes data?", fileContributions && fileContributions.length > 0);
+    // console.log("Unique Developers:", Array.from(uniqueDevs));
+    // console.log("Number of Knowledgable Developers:", numKnowledgable);
+    // console.log("authorContributions includes data?", authorContributions && authorContributions.length > 0);
+    // console.log("Author Number of Commits:", authorNumCommits);
+    // console.log("Author Number of Reviews:", authorNumReviews);
+    // console.log("Author Last Commit Date:", authorLastCommitDate);
+    // console.log("Author Last Review Date:", authorLastReviewDate);
+    // console.log("------NEW3------");
 
     // lookup per-file normalized CxFactor for the author if provided ---
     let authorCxFactor = 0; // Default to 0 instead of null
@@ -438,8 +438,6 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
   const filePaths = prFiles.map(f => f.filename);
   let comment = `## 📊 Pull Request Analysis
 
-### 📁 Files Modified in this PR
-
 ### Author Knowledge: @${prAuthor}
 
 | File | Change Type | NumKnowledgable | Change Size | NumCommit | Last Commit Date | NumReview | Last Review Date | Author CxFactor |
@@ -461,7 +459,7 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
     const changeSizeText = (typeof file.changeSize === 'number') ? file.changeSize : 'N/A';
     const cxText = (typeof file.authorCxFactor === 'number') ? file.authorCxFactor.toFixed(3) : '0.000';
 
-    comment += `| \`${file.filename}\` | ${file.changeType} | ${file.numKnowledgable} | ${changeSizeText} | ${file.authorNumCommits} | ${formatDate(file.authorLastCommitDate)} | ${file.authorNumReviews} | ${formatDate(file.authorLastReviewDate)} | ${cxText} |\n`;
+    comment += `| \`${file.filename}\` | ${file.changeType} | ${file.numKnowledgable} | ${changeSizeText} | ${file.authorNumCommits} | ${file.authorLastCommitDate} | ${file.authorNumReviews} | ${file.authorLastReviewDate} | ${cxText} |\n`;
 
     // Categorize files (abandoned/hoarded logic: keep using numKnowledgable)
     // if (file.numKnowledgable === 0) {
