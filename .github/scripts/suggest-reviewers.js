@@ -135,7 +135,7 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
         contributors!inner(github_login, canonical_name),
         files!inner(current_path, canonical_path)
       `)
-      .or(`files.current_path.eq.${JSON.stringify(filePath)},files.canonical_path.eq.${JSON.stringify(filePath)}`)
+      .eq('files.current_path', filePath)
       .lt('contribution_date', prCreatedAt)
       .neq('contributors.github_login', prAuthor);
 
@@ -161,7 +161,7 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
         contributors!inner(github_login),
         files!inner(current_path, canonical_path)
       `)
-      .or(`files.current_path.eq.${JSON.stringify(filePath)},files.canonical_path.eq.${JSON.stringify(filePath)}`)
+      .eq('files.current_path', filePath)
       .lt('contribution_date', prCreatedAt)
       .eq('contributors.github_login', prAuthor);
 
@@ -207,7 +207,7 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
     console.log("Author Number of Reviews:", authorNumReviews);
     console.log("Author Last Commit Date:", authorLastCommitDate);
     console.log("Author Last Review Date:", authorLastReviewDate);
-    console.log("------NEW2------");
+    console.log("------NEW3------");
 
     // lookup per-file normalized CxFactor for the author if provided ---
     let authorCxFactor = 0; // Default to 0 instead of null
