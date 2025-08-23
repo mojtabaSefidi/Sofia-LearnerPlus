@@ -7,45 +7,58 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
-async function achrev_suggestion(prNumber, prAuthor, prFiles, topN = 5) {
+async function achrev_suggestion(prNumber, prAuthor, prFiles, topN = 5, prCreatedAt = null, options = {}) {
   console.log('🔬 Running achrev_suggestion...');
+
   if (!prFiles || prFiles.length === 0) {
     return [];
   }
 
+  options = {
+    includeAuthor: true,
+    perFileForAuthorOnly: true,
+    ...options
+  };
+
   const filePaths = prFiles.map(f => f.filename);
 
-  // Get review comments data
-  const { data: reviewRows, error: reviewErr } = await supabase
+  // Build review query (include author if options.includeAuthor)
+  let reviewQuery = supabase
     .from('contributions')
     .select(`
       contributor_id,
       contribution_date,
       contributors!inner(github_login, canonical_name),
-      files!inner(current_path, canonical_path)
+      files!inner(current_path, canonical_path),
+      activity_type
     `)
     .in('files.current_path', filePaths)
-    .eq('activity_type', 'review')
-    .neq('contributors.github_login', prAuthor);
+    .eq('activity_type', 'review');
 
+  if (prCreatedAt) reviewQuery = reviewQuery.lt('contribution_date', prCreatedAt);
+
+  const { data: reviewRows, error: reviewErr } = await reviewQuery;
   if (reviewErr) {
     console.error('Error fetching review contributions:', reviewErr);
     throw reviewErr;
   }
 
-  // Get commit data
-  const { data: commitRows, error: commitErr } = await supabase
+  // Build commit query (include author if options.includeAuthor)
+  let commitQuery = supabase
     .from('contributions')
     .select(`
       contributor_id,
       contribution_date,
       contributors!inner(github_login, canonical_name),
-      files!inner(current_path, canonical_path)
+      files!inner(current_path, canonical_path),
+      activity_type
     `)
     .in('files.current_path', filePaths)
-    .eq('activity_type', 'commit')
-    .neq('contributors.github_login', prAuthor);
+    .eq('activity_type', 'commit');
 
+  if (prCreatedAt) commitQuery = commitQuery.lt('contribution_date', prCreatedAt);
+
+  const { data: commitRows, error: commitErr } = await commitQuery;
   if (commitErr) {
     console.error('Error fetching commit contributions:', commitErr);
     throw commitErr;
@@ -58,9 +71,9 @@ async function achrev_suggestion(prNumber, prAuthor, prFiles, topN = 5) {
     if (!fileTotals.has(path)) {
       fileTotals.set(path, {
         R_f_prime: 0,          // Total reviews on file
-        W_f_prime: new Set(),  // Total work days for reviews
+        W_f_prime: new Set(),  // Distinct work days for reviews (dates)
         T_r_f_prime: null,     // Most recent review date
-        C_f_prime: 0,          // Total commits on file  
+        C_f_prime: 0,          // Total commits on file
         T_c_f_prime: null      // Most recent commit date
       });
     }
@@ -74,7 +87,7 @@ async function achrev_suggestion(prNumber, prAuthor, prFiles, topN = 5) {
         login,
         canonical_name,
         R_f: 0,                // Developer's reviews on file
-        W_f: new Set(),        // Developer's work days for reviews
+        W_f: new Set(),        // Developer's distinct review days
         T_r_f: null,           // Developer's most recent review date
         C_f: 0,                // Developer's commits on file
         T_c_f: null            // Developer's most recent commit date
@@ -141,32 +154,31 @@ async function achrev_suggestion(prNumber, prAuthor, prFiles, topN = 5) {
     });
   }
 
-  // Ensure all files are initialized
+  // Ensure all files are initialized (even if no rows found)
   for (const path of filePaths) {
     ensureFileTotals(path);
   }
 
-  // Calculate CxFactor scores
+  // Aggregate per-developer stats
   const devAggregate = new Map();
 
   function calculateRecencyScore(devDate, fileDate) {
     if (!fileDate || !devDate) return 0.0;
-    if (devDate.getTime() === fileDate.getTime()) return 1.0;
-    
+    // use absolute day difference
     const daysDiff = Math.abs((devDate - fileDate) / (1000 * 60 * 60 * 24));
     return 1.0 / (1.0 + daysDiff);
   }
 
   for (const [key, dev] of devFileStats) {
     const ft = fileTotals.get(dev.path);
-    
-    // Calculate the 5 components of CxFactor
+
+    // Five components (guard divisions)
     const scoreReviewComments = ft.R_f_prime === 0 ? 0.0 : dev.R_f / ft.R_f_prime;
     const scoreWorkDays = ft.W_f_prime.size === 0 ? 0.0 : dev.W_f.size / ft.W_f_prime.size;
     const scoreReviewRecency = calculateRecencyScore(dev.T_r_f, ft.T_r_f_prime);
     const scoreCommits = ft.C_f_prime === 0 ? 0.0 : dev.C_f / ft.C_f_prime;
     const scoreCommitRecency = calculateRecencyScore(dev.T_c_f, ft.T_c_f_prime);
-    
+
     const fileScore = scoreReviewComments + scoreWorkDays + scoreReviewRecency + scoreCommits + scoreCommitRecency;
 
     if (!devAggregate.has(dev.login)) {
@@ -189,24 +201,40 @@ async function achrev_suggestion(prNumber, prAuthor, prFiles, topN = 5) {
       scoreReviewRecency,
       scoreCommits,
       scoreCommitRecency,
-      fileScore
+      fileScore // raw (0..5)
     });
   }
 
+  // Normalize developer-level score by total number of PR files (not by dev fileCount)
+  const totalPRFiles = filePaths.length || 1;
+
   const results = [];
   for (const [login, agg] of devAggregate) {
-    // Normalize score to 0-1 range by dividing by total possible score (5 points per file)
-    const normalizedScore = agg.fileCount > 0 ? agg.totalScore / (5 * agg.fileCount) : 0;
-    
+    // developer-level normalized score in [0..1]
+    const normalizedScore = totalPRFiles > 0 ? agg.totalScore / (5 * totalPRFiles) : 0;
+
+    // Only add per-file normalized (0..1) for the author by default to limit work.
+    // perFileNormalized = fileScore / 5
+    const perFileOutput = agg.perFile.map(p => {
+      const out = { ...p };
+      if (!options.perFileForAuthorOnly || login === prAuthor) {
+        out.normalizedFileCx = (typeof p.fileScore === 'number') ? (p.fileScore / 5) : null;
+        // also optionally provide normalized by PR files if caller needs it:
+        out.normalizedFileCxByPR = (typeof p.fileScore === 'number') ? (p.fileScore / (5 * totalPRFiles)) : null;
+      }
+      return out;
+    });
+
     results.push({
       login,
       canonical_name: agg.canonical_name,
       cxFactorScore: normalizedScore,
       fileCount: agg.fileCount,
-      perFile: agg.perFile
+      perFile: perFileOutput
     });
   }
 
+  // Sort and return topN
   results.sort((a, b) => b.cxFactorScore - a.cxFactorScore);
 
   return results.slice(0, topN);
