@@ -196,6 +196,17 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
     authorLastCommitDate = authorLastCommitDate ? authorLastCommitDate.toISOString() : null;
     authorLastReviewDate = authorLastReviewDate ? authorLastReviewDate.toISOString() : null;
 
+    console.log("File Path:", filePath);
+    console.log("fileContributions includes data?", fileContributions && fileContributions.length > 0);
+    console.log("Unique Developers:", Array.from(uniqueDevs));
+    console.log("Number of Knowledgable Developers:", numKnowledgable);
+    console.log("authorContributions includes data?", authorContributions && authorContributions.length > 0);
+    console.log("Author Number of Commits:", authorNumCommits);
+    console.log("Author Number of Reviews:", authorNumReviews);
+    console.log("Author Last Commit Date:", authorLastCommitDate);
+    console.log("Author Last Review Date:", authorLastReviewDate);
+    console.log("------------");
+
     // lookup per-file normalized CxFactor for the author if provided ---
     let authorCxFactor = 0; // Default to 0 instead of null
     try {
@@ -221,29 +232,6 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
       authorCxFactor = 0;
     }
 
-    let topContributor = null;
-    if (fileContributions && fileContributions.length > 0) {
-      const commits = new Map();
-      const reviews = new Map();
-      fileContributions.forEach(c => {
-        const login = c.contributors.github_login;
-        if (!login) return;
-        if (c.activity_type === 'commit') commits.set(login, (commits.get(login)||0)+1);
-        if (c.activity_type === 'review') reviews.set(login, (reviews.get(login)||0)+1);
-      });
-      // pick top by commits+reviews
-      let best = null, bestCount = -1;
-      commits.forEach((cCount, login) => {
-        const rCount = reviews.get(login) || 0;
-        const tot = cCount + rCount;
-        if (tot > bestCount) {
-          bestCount = tot;
-          best = { login, commits: cCount, reviews: rCount, total: tot };
-        }
-      });
-      if (best) topContributor = best;
-    }
-
     fileAnalysis.push({
       filename: filePath,
       changeType,
@@ -254,7 +242,7 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
       authorNumReviews,          
       authorLastReviewDate,      
       authorCxFactor,            
-      topContributor,
+      // topContributor,
       isNew: changeType === 'create'
     });
   }
@@ -474,14 +462,14 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
     comment += `| \`${file.filename}\` | ${file.changeType} | ${file.numKnowledgable} | ${changeSizeText} | ${file.authorNumCommits} | ${formatDate(file.authorLastCommitDate)} | ${file.authorNumReviews} | ${formatDate(file.authorLastReviewDate)} | ${cxText} |\n`;
 
     // Categorize files (abandoned/hoarded logic: keep using numKnowledgable)
-    if (file.numKnowledgable === 0) {
-      abandonedFiles.push(file.filename);
-    } else if (file.numKnowledgable === 1 && file.topContributor) {
-      hoardedFiles.push({
-        filename: file.filename,
-        owner: file.topContributor.login
-      });
-    }
+    // if (file.numKnowledgable === 0) {
+    //   abandonedFiles.push(file.filename);
+    // } else if (file.numKnowledgable === 1 && file.topContributor) {
+    //   hoardedFiles.push({
+    //     filename: file.filename,
+    //     owner: file.topContributor.login
+    //   });
+    // }
   });
 
   comment += `
