@@ -19,7 +19,7 @@ namespace RelationalGit.Recommendation
             bool? addOnlyToUnsafePullrequests,
             string recommenderOption, bool changePast,
             string simulationType)
-            : base(knowledgeSaveReviewerReplacementType, logger,pullRequestReviewerSelectionStrategy,addOnlyToUnsafePullrequests, recommenderOption,changePast, simulationType)
+            : base(knowledgeSaveReviewerReplacementType, logger, pullRequestReviewerSelectionStrategy,addOnlyToUnsafePullrequests, recommenderOption, changePast, simulationType)
         {
             _numberOfPeriodsForCalculatingProbabilityOfStay = numberOfPeriodsForCalculatingProbabilityOfStay;
 
@@ -33,10 +33,10 @@ namespace RelationalGit.Recommendation
         private (double Alpha,double Beta,double hoarderRatio) GetParameters(string recommenderOption)
         {
             if (string.IsNullOrEmpty(recommenderOption))
-                return (0.5, 1,0.7);
+                return (0.5, 1, 0.7);
 
             var options = recommenderOption.Split(',');
-            var alphaOption = options.FirstOrDefault(q => q.StartsWith("alpha")).Substring("alpha".Length+1);
+            var alphaOption = options.FirstOrDefault(q => q.StartsWith("alpha")).Substring("alpha".Length + 1);
             var betaOption = options.FirstOrDefault(q => q.StartsWith("beta")).Substring("beta".Length + 1);
             var hoarderRatioOption = options.FirstOrDefault(q => q.StartsWith("hoarder_ratio")).Substring("hoarder_ratio".Length + 1);
 

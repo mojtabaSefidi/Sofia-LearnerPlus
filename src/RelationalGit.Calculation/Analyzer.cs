@@ -193,7 +193,6 @@ namespace RelationalGit.Calculation
                     actualExpertise[period.Id].Add(actualRecommendationResult.Expertise);
                 }
 
-
                 var lastPeriod = actualExpertise.Max(q => q.Key);
                 actualExpertise.Remove(lastPeriod);
 
@@ -863,8 +862,6 @@ namespace RelationalGit.Calculation
             WriteOpenReviws(result, Path.Combine(path, "AUC.csv"));
         }
 
-
-
         private static void CalculateTotalFaRRaw(long[] simulationsIds, string path)
         {
             var result = new List<SimulationResult>();
@@ -991,6 +988,7 @@ namespace RelationalGit.Calculation
                 }
             }
         }
+        
         private static void WriteOpenReviws(IEnumerable<OpenReviewResult> openReviewResults, string path)
         {
             using (var dt = new DataTable())
@@ -1056,6 +1054,7 @@ namespace RelationalGit.Calculation
                 }
             }
         }
+        
         private static bool IsRowConstant(DataRow row)
         {
             if (row.Table.Columns.Count <= 2)
@@ -1094,7 +1093,6 @@ namespace RelationalGit.Calculation
             public LossSimulation LossSimulation { get; set; }
 
             public List<int> Results { get; set; } = new List<int>();
-
 
         }
 

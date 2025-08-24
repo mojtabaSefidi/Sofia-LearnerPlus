@@ -78,8 +78,6 @@ namespace RelationalGit.Recommendation
                 }
             }
 
-
-
             double final_score = Convert.ToDouble(review_score + commit_score + neighber_commit_score + neighber_review_score);
             return final_score;
         }
@@ -98,8 +96,6 @@ namespace RelationalGit.Recommendation
         }
         internal override double ComputeReviewerScore(PullRequestContext pullRequestContext, DeveloperKnowledge reviewer)
         {
-
-
 
             var alpha = pullRequestContext.GetRiskyFiles(_riskOwenershipThreshold).Length > 0 ? 1 : 0;
 
