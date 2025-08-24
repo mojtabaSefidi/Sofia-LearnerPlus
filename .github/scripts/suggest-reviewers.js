@@ -567,17 +567,17 @@ No developers found with prior experience on these files. Consider assigning rev
 - **line/hour**: Lines reviewed per hour  
 `;
 
-    const cxFactorScores = reviewerMetrics
+    const RecommendationScores = reviewerMetrics
       .sort((a, b) => b.cxFactorScore - a.cxFactorScore);
 
-    if (cxFactorScores.length > 0) {
+    if (RecommendationScores.length > 0) {
       comment += `\n### 🎯 CxFactor Expertise Scores
 
 | Developer | CxFactor Score | Knowledge Distribution Score |
 |-----------|----------------|------------------------------|
 `;
 
-      cxFactorScores.forEach(metrics => {
+      RecommendationScores.forEach(metrics => {
         comment += `| ${metrics.login} | ${(metrics.cxFactorScore || 0).toFixed(3)} | ${(metrics.turnoverRecScore || 0).toFixed(3)} |\n`;
       });
 
