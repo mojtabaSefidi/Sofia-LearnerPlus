@@ -166,7 +166,7 @@ async function turnoverRec_suggestion(
     // TurnoverRec with weights
     const turnoverRec = (C1_turn * learnRec) * (C2_turn * retentionRec);
 
-    console.log('login: ', metrics.login)
+    console.log('login: ', login)
     console.log('consistencyRatio_period: ', consistencyRatio_period)
     console.log('contributionRatio_period: ', contributionRatio_period)
     console.log('turnoverRec: ', turnoverRec)
