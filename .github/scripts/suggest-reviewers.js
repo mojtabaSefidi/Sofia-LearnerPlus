@@ -110,13 +110,13 @@ async function suggestReviewers() {
     // Get TurnoverRec Suggestion
     let turnoverRecResults = [];
     try {
-      turnoverRecResults = await turnoverRec_suggestion(
-        pr.user.login,        // prAuthor
-        prFiles,              // prFiles
-        pr.created_at,        // prCreatedAt
-        200,                  // topN
-        days_ago = 1500
-      );
+      turnoverRecResults = await turnoverRec_suggestion({
+        prAuthor: pr.user.login,
+        prFiles: prFiles,
+        prCreatedAt: pr.created_at,
+        topN: 200,
+        days_ago: 1500
+      });
     } catch (err) {
       console.error('⚠️ turnoverRec_suggestion failed or errored:', err);
       turnoverRecResults = [];
