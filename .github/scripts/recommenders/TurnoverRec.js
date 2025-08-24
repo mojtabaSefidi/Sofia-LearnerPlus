@@ -166,6 +166,7 @@ async function turnoverRec_suggestion(
     // TurnoverRec with weights
     const turnoverRec = (C1_turn * learnRec) * (C2_turn * retentionRec);
 
+    console.log('days_ago: ', days_ago)
     console.log('login: ', devMeta.login)
     console.log('devCnt: ', devCnt)
     console.log('projectTotalInWindow: ', projectTotalInWindow)
