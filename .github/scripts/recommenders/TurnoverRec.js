@@ -167,7 +167,11 @@ async function turnoverRec_suggestion(
     const turnoverRec = (C1_turn * learnRec) * (C2_turn * retentionRec);
 
     console.log('login: ', devMeta.login)
+    console.log('devCnt: ', devCnt)
+    console.log('projectTotalInWindow: ', projectTotalInWindow)
     console.log('consistencyRatio_period: ', consistencyRatio_period)
+    console.log('monthsInWindow: ', monthsInWindow)
+    console.log('activeMonths: ', activeMonths)
     console.log('contributionRatio_period: ', contributionRatio_period)
     console.log('turnoverRec: ', turnoverRec)
     console.log('learnRecScore: ', learnRec)
