@@ -1,5 +1,6 @@
 // .github/scripts/suggest-reviewers.js
 const { achrev_suggestion } = require('./recommenders/AcHRev');
+const { turnoverRec_suggestion } = require('./recommenders/TurnoverRec');
 
 const { 
   calculateWorkloadAnalytics, 
@@ -72,7 +73,7 @@ async function suggestReviewers() {
     
     console.log(`📁 Found ${prFiles.length} files in PR`);
 
-    // CALL ACHRev
+    // Get ACHRev Suggestion
     console.log('🎯 Running ACHRev to compute CxFactor scores...');
 
     let achrevResults = [];
@@ -99,13 +100,30 @@ async function suggestReviewers() {
 
     if (Array.isArray(achrevResults)) {
       achrevResults.forEach(r => {
-        achrevByLoginMap.set(r.login, { cxFactorScore: r.cxFactorScore, fileCount: r.fileCount, perFile: r.perFile });
+        achrevByLoginMap.set(r.login, {cxFactorScore: r.cxFactorScore, fileCount: r.fileCount, perFile: r.perFile });
         if (Array.isArray(r.perFile)) {
           r.perFile.forEach(p => {
             achrevPerFileMap.set(`${r.login}|${p.file}`, p);
           });
         }
       });
+    }
+
+    // Get TurnoverRec Suggestion
+    console.log('🎯 Computing TurnoverRec scores...');
+
+    let turnoverRecResults = [];
+    try {
+      turnoverRecResults = await turnoverRec_suggestion(
+        prAuthor = pr.user.login,
+        prFiles = prFiles,
+        prCreatedAt = pr.created_at,
+        topN = 200,
+      );
+    } catch (err) {
+      // Fail gracefully: log and continue with empty ACHRev results
+      console.error('⚠️ turnoverRec_suggestion failed or errored:', err);
+      turnoverRecResults = [];
     }
 
     // Analyze files in detail — pass achrevPerFileMap so analyzeFiles can set per-file author CxFactor
