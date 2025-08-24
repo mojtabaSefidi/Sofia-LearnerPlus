@@ -166,6 +166,15 @@ async function turnoverRec_suggestion(
     // TurnoverRec with weights
     const turnoverRec = (C1_turn * learnRec) * (C2_turn * retentionRec);
 
+    console.log('login: ', metrics.login)
+    console.log('consistencyRatio_period: ', consistencyRatio_period)
+    console.log('contributionRatio_period: ', contributionRatio_period)
+    console.log('turnoverRec: ', turnoverRec)
+    console.log('learnRecScore: ', learnRec)
+    console.log('retentionRecScore: ', retentionRec)
+    console.log('knowledgeScore: ', knowledge)
+    console.log('----------')
+    
     results.push({
       login: devMeta.login,
       canonical_name: devMeta.canonical_name,
