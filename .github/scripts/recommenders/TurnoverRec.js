@@ -13,7 +13,8 @@ async function turnoverRec_suggestion(
   C1_turn = 1.0,
   C2_turn = 1.0,
   C1_ret = 1.0,
-  C2_ret = 1.0
+  C2_ret = 1.0,
+  exclude_developer_without_knowledge = false
 ) {
   console.log('🔬 Running turnoverRec_suggestion...');
 
@@ -131,7 +132,7 @@ async function turnoverRec_suggestion(
     const numKnownFiles = knownSet.size;
 
     // Per the paper: only candidates who know at least one file should be considered.
-    if (numKnownFiles <= 0) {
+    if (numKnownFiles <= 0 && exclude_developer_without_knowledge) {
       continue;
     }
 
