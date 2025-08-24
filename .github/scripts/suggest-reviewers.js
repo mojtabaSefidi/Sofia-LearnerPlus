@@ -115,22 +115,34 @@ async function suggestReviewers() {
     let turnoverRecResults = [];
     try {
       turnoverRecResults = await turnoverRec_suggestion(
-        prAuthor = pr.user.login,
-        prFiles = prFiles,
-        prCreatedAt = pr.created_at,
-        topN = 200,
+        pr.user.login,        // prAuthor
+        prFiles,              // prFiles
+        pr.created_at,        // prCreatedAt
+        200,                  // topN
       );
     } catch (err) {
-      // Fail gracefully: log and continue with empty ACHRev results
       console.error('⚠️ turnoverRec_suggestion failed or errored:', err);
       turnoverRecResults = [];
+    }
+    
+    // Build TurnoverRec lookup map
+    const turnoverRecByLoginMap = new Map();
+    if (Array.isArray(turnoverRecResults)) {
+      turnoverRecResults.forEach(r => {
+        turnoverRecByLoginMap.set(r.login, {
+          turnoverRec: r.turnoverRec || 0,
+          learnRec: r.learnRec || 0,
+          retentionRec: r.retentionRec || 0,
+          knowledge: r.knowledge || 0
+        });
+      });
     }
 
     // Analyze files in detail — pass achrevPerFileMap so analyzeFiles can set per-file author CxFactor
     const fileAnalysis = await analyzeFiles(prFiles, pr.user.login, pr.created_at, achrevPerFileMap);
     
     // Calculate detailed reviewer metrics — pass achrevByLoginMap so we don't re-run achrev inside it
-    const reviewerMetrics = await calculateDetailedReviewerMetrics(prFiles, pr.user.login, achrevByLoginMap);
+    const reviewerMetrics = await calculateDetailedReviewerMetrics(prFiles, pr.user.login, achrevByLoginMap, turnoverRecByLoginMap);
     
     // Generate comprehensive comment
     const comment = generateDetailedComment(fileAnalysis, reviewerMetrics, pr.user.login, prFiles);
@@ -277,7 +289,7 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
 }
 
 
-async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLoginMap) {
+async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLoginMap, turnoverRecByLoginMap) {
   console.log('📈 Calculating detailed reviewer metrics...');
   
   const filePaths = prFiles.map(f => f.filename);
@@ -411,6 +423,19 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLogin
       expertScoreMap.set(login, { cxFactorScore, fileCount });
     }
   }
+
+  // TurnoverRec scores lookup
+  const turnoverRecScoreMap = new Map();
+  if (turnoverRecByLoginMap && turnoverRecByLoginMap instanceof Map) {
+    for (const [login, info] of turnoverRecByLoginMap) {
+      turnoverRecScoreMap.set(login, {
+        turnoverRec: info.turnoverRec || 0,
+        learnRec: info.learnRec || 0,
+        retentionRec: info.retentionRec || 0,
+        knowledge: info.knowledge || 0
+      });
+    }
+  }
   
   // Combine all metrics (including CxFactor)
   const enhancedMetrics = finalMetrics.map(metrics => {
@@ -418,6 +443,8 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLogin
     const performance = performanceData.get(metrics.login) || {};
     const activity = activityData.get(metrics.login) || {};
     const expertScore = expertScoreMap.get(metrics.login) || { cxFactorScore: 0, fileCount: 0 };
+    const turnoverRecScore = turnoverRecScoreMap.get(metrics.login) || { turnoverRec: 0, learnRec: 0, retentionRec: 0, knowledge: 0 };
+  
     
     return {
       ...metrics,
@@ -436,7 +463,12 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLogin
       lastModificationInPRFiles: activity.lastModificationInPRFiles,
       // CxFactor score
       cxFactorScore: expertScore.cxFactorScore,
-      expertFileCount: expertScore.fileCount
+      expertFileCount: expertScore.fileCount,
+      // TurnoverRec scores
+      turnoverRecScore: turnoverRecScore.turnoverRec,
+      learnRecScore: turnoverRecScore.learnRec,
+      retentionRecScore: turnoverRecScore.retentionRec,
+      knowledgeScore: turnoverRecScore.knowledge
     };
   });
   
@@ -541,17 +573,18 @@ No developers found with prior experience on these files. Consider assigning rev
     if (cxFactorScores.length > 0) {
       comment += `\n### 🎯 CxFactor Expertise Scores
 
-| Developer | CxFactor Score |
-|-----------|----------------|
+| Developer | CxFactor Score | Knowledge Distribution Score |
+|-----------|----------------|------------------------------|
 `;
 
       cxFactorScores.forEach(metrics => {
-        comment += `| ${metrics.login} | ${(metrics.cxFactorScore || 0).toFixed(3)} |\n`;
+        comment += `| ${metrics.login} | ${(metrics.cxFactorScore || 0).toFixed(3)} | ${(metrics.turnoverRecScore || 0).toFixed(3)} |\n`;
       });
 
-      comment += `\n**CxFactor Score**: ACHRev expertise score (0-1) based on review history, commit history, work patterns, and recency of contributions on PR files.
+  comment += `\n**CxFactor Score**: ACHRev expertise score (0-1) based on review history, commit history, work patterns, and recency of contributions on PR files.
+**Knowledge Distribution Score**: TurnoverRec score combining learning potential and retention likelihood.
 `;
-    }
+}
     
 // ### File Knowledge Breakdown
 //     reviewerMetrics.forEach(metrics => {
