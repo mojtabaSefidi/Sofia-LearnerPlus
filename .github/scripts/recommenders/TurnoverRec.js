@@ -14,7 +14,8 @@ async function turnoverRec_suggestion(
   C2_turn = 1.0,
   C1_ret = 1.0,
   C2_ret = 1.0,
-  exclude_developer_without_knowledge = false
+  exclude_developer_without_knowledge = false,
+  days_ago=700
 ) {
   console.log('🔬 Running turnoverRec_suggestion...');
 
@@ -29,7 +30,7 @@ async function turnoverRec_suggestion(
   }
 
   // Define last-365 window relative to prRefDate (for contribution & consistency)
-  const last365Start = new Date(prRefDate.getTime() - 365 * 24 * 60 * 60 * 1000);
+  const StartDate = new Date(prRefDate.getTime() - days_ago * 24 * 60 * 60 * 1000);
 
   // 1) Fetch candidate list (all contributors excluding author)
   const { data: contributors, error: contribErr } = await supabase
@@ -81,7 +82,7 @@ async function turnoverRec_suggestion(
   let contributionsLast365Query = supabase
     .from('contributions')
     .select('contributor_id, contribution_date, activity_type')
-    .gte('contribution_date', last365Start.toISOString())
+    .gte('contribution_date', StartDate.toISOString())
     .lte('contribution_date', prRefDate.toISOString())
     .in('activity_type', ['commit', 'review']);
 
