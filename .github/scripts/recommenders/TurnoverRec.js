@@ -15,7 +15,7 @@ async function turnoverRec_suggestion(
   C1_ret = 1.0,
   C2_ret = 1.0,
   exclude_developer_without_knowledge = false,
-  days_ago=700
+  days_ago = 365
 ) {
   console.log('🔬 Running turnoverRec_suggestion...');
 
@@ -29,8 +29,18 @@ async function turnoverRec_suggestion(
     throw new Error('Invalid prCreatedAt date');
   }
 
-  // Define last-365 window relative to prRefDate (for contribution & consistency)
-  const StartDate = new Date(prRefDate.getTime() - days_ago * 24 * 60 * 60 * 1000);
+  // Define windowStartDate based on days_ago relative to prRefDate (for contribution & consistency).
+  const windowStartDate = new Date(prRefDate.getTime() - days_ago * 24 * 60 * 60 * 1000);
+
+  // Compute number of months in the selected window (used to normalize consistency)
+  // We add +1 to be inclusive of both endpoints' months; ensure at least 1 month.
+  const monthsInWindow =
+    Math.max(
+      1,
+      (prRefDate.getFullYear() - windowStartDate.getFullYear()) * 12 +
+      (prRefDate.getMonth() - windowStartDate.getMonth()) +
+      1
+    );
 
   // 1) Fetch candidate list (all contributors excluding author)
   const { data: contributors, error: contribErr } = await supabase
@@ -77,19 +87,19 @@ async function turnoverRec_suggestion(
     throw prFilesErr;
   }
 
-  // 3) Fetch all contributions in the last 365 days (project-wide) to compute
-  //    per-dev counts and months active
-  let contributionsLast365Query = supabase
+  // 3) Fetch all contributions in the chosen window (project-wide) to compute
+  //    per-dev counts and active months within the window.
+  let contributionsInWindowQuery = supabase
     .from('contributions')
     .select('contributor_id, contribution_date, activity_type')
-    .gte('contribution_date', StartDate.toISOString())
+    .gte('contribution_date', windowStartDate.toISOString())
     .lte('contribution_date', prRefDate.toISOString())
     .in('activity_type', ['commit', 'review']);
 
-  const { data: last365Rows, error: last365Err } = await contributionsLast365Query;
-  if (last365Err) {
-    console.error('Error fetching last-365 contributions:', last365Err);
-    throw last365Err;
+  const { data: contributionsInWindowRows, error: windowErr } = await contributionsInWindowQuery;
+  if (windowErr) {
+    console.error('Error fetching contributions in window:', windowErr);
+    throw windowErr;
   }
 
   // 4) Aggregate: num_known_files per candidate (unique file_id) from prsFileRows
@@ -105,19 +115,19 @@ async function turnoverRec_suggestion(
   // num PR files
   const numPRFiles = filePaths.length;
 
-  // 5) Aggregate: per-dev contribution count and months active from last365Rows
-  const contribCountByDev = new Map(); // devId -> count
+  // 5) Aggregate: per-dev contribution count and active months from contributionsInWindowRows
+  const contributionCountByDev = new Map(); // devId -> count
   const activeMonthsByDev = new Map(); // devId -> Set(monthStr)
-  let projectTotalLast365 = 0;
+  let projectTotalInWindow = 0;
 
-  for (const r of last365Rows || []) {
+  for (const r of contributionsInWindowRows || []) {
     const devId = r.contributor_id;
-    projectTotalLast365 += 1;
+    projectTotalInWindow += 1;
 
     // per-dev counts
-    contribCountByDev.set(devId, (contribCountByDev.get(devId) || 0) + 1);
+    contributionCountByDev.set(devId, (contributionCountByDev.get(devId) || 0) + 1);
 
-    // month bucket
+    // month bucket (YYYY-MM) within the window
     const date = new Date(r.contribution_date);
     if (!isNaN(date.getTime())) {
       const monthStr = date.toISOString().slice(0, 7); // 'YYYY-MM'
@@ -132,26 +142,26 @@ async function turnoverRec_suggestion(
     const knownSet = knownFilesByDev.get(devId) || new Set();
     const numKnownFiles = knownSet.size;
 
-    // Per the paper: only candidates who know at least one file should be considered.
+    // Only candidates who know at least one file should be considered (optional)
     if (numKnownFiles <= 0 && exclude_developer_without_knowledge) {
       continue;
     }
 
-    // Knowledge(D,R)
+    // Knowledge(D,R) = fraction of PR files the dev knows
     const knowledge = numPRFiles > 0 ? (numKnownFiles / numPRFiles) : 0.0;
     const learnRec = 1.0 - knowledge;
 
-    // ContributionRatio_365(D)
-    const devCnt = contribCountByDev.get(devId) || 0;
-    const contributionRatio_365 = projectTotalLast365 > 0 ? (devCnt / projectTotalLast365) : 0.0;
+    // Contribution ratio within the chosen window (project-wide)
+    const devCnt = contributionCountByDev.get(devId) || 0;
+    const contributionRatio_period = projectTotalInWindow > 0 ? (devCnt / projectTotalInWindow) : 0.0;
 
-    // ConsistencyRatio_365(D)
+    // Consistency ratio: number of distinct active months in the window normalized by monthsInWindow
     const monthsSet = activeMonthsByDev.get(devId) || new Set();
-    const activeMonths = monthsSet.size; // 0..12
-    const consistencyRatio_365 = Math.min(activeMonths / 12.0, 1.0);
+    const activeMonths = monthsSet.size; // how many distinct months the dev was active in the window
+    const consistencyRatio_period = Math.min(activeMonths / monthsInWindow, 1.0);
 
     // RetentionRec with weights
-    const retentionRec = (C1_ret * consistencyRatio_365) * (C2_ret * contributionRatio_365);
+    const retentionRec = (C1_ret * consistencyRatio_period) * (C2_ret * contributionRatio_period);
 
     // TurnoverRec with weights
     const turnoverRec = (C1_turn * learnRec) * (C2_turn * retentionRec);
@@ -164,8 +174,8 @@ async function turnoverRec_suggestion(
       learnRec,
       retentionRec,
       knowledge,
-      consistencyRatio_365,
-      contributionRatio_365,
+      consistencyRatio_period,
+      contributionRatio_period,
       numKnownFiles
     });
   }
