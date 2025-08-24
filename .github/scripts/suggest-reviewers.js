@@ -74,8 +74,6 @@ async function suggestReviewers() {
     console.log(`📁 Found ${prFiles.length} files in PR`);
 
     // Get ACHRev Suggestion
-    console.log('🎯 Running ACHRev to compute CxFactor scores...');
-
     let achrevResults = [];
     try {
       achrevResults = await achrev_suggestion(
@@ -110,8 +108,6 @@ async function suggestReviewers() {
     }
 
     // Get TurnoverRec Suggestion
-    console.log('🎯 Computing TurnoverRec scores...');
-
     let turnoverRecResults = [];
     try {
       turnoverRecResults = await turnoverRec_suggestion(
@@ -119,6 +115,7 @@ async function suggestReviewers() {
         prFiles,              // prFiles
         pr.created_at,        // prCreatedAt
         200,                  // topN
+        days_ago = 1500
       );
     } catch (err) {
       console.error('⚠️ turnoverRec_suggestion failed or errored:', err);
