@@ -575,6 +575,12 @@ No developers found with prior experience on these files. Consider assigning rev
 `;
 
       RecommendationScores.forEach(metrics => {
+        console.log('login: ', metrics.login)
+        console.log('turnoverRec: ', metrics.turnoverRecScore)
+        console.log('learnRecScore: ', metrics.learnRecScore)
+        console.log('retentionRecScore: ', metrics.retentionRecScore)
+        console.log('knowledgeScore: ', metrics.knowledgeScore)
+        console.log('----------')
         comment += `| ${metrics.login} | ${(metrics.cxFactorScore || 0).toFixed(3)} | ${(metrics.turnoverRecScore || 0).toFixed(3)} |\n`;
       });
 
