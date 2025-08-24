@@ -47,7 +47,7 @@ CREATE TABLE contributions (
 -- Pull requests table
 CREATE TABLE pull_requests (
   id SERIAL PRIMARY KEY,
-  pr_number INTEGER NOT NULL,
+  pr_number INTEGER NOT NULL UNIQUE,
   status VARCHAR(50) NOT NULL, -- 'open', 'closed', 'merged'
   author_login VARCHAR(255) NOT NULL,
   reviewers jsonb NOT NULL DEFAULT '[]'::jsonb, -- array of reviewer objects
@@ -63,15 +63,15 @@ CREATE TABLE review_comments (
   id SERIAL PRIMARY KEY,
   contributor_id INT NOT NULL REFERENCES contributors(id),
   pr_number INT NOT NULL REFERENCES pull_requests(pr_number),
-  comment_date TIMESTAMP NOT NULL,
+  comment_date timestamp without time zone NOT NULL,
   comment_text TEXT,
-  created_at TIMESTAMP DEFAULT now()
+  created_at timestamp without time zone DEFAULT now(),
 );
 
 -- Repository metadata
 CREATE TABLE repository_metadata (
   id SERIAL PRIMARY KEY,
-  key VARCHAR(100) UNIQUE NOT NULL,
+  key VARCHAR UNIQUE NOT NULL,
   value TEXT NOT NULL,
   updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now()
 );
