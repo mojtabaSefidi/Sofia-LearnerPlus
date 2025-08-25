@@ -11,34 +11,6 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
-
-const fetch = require("node-fetch");
-
-const owner = "octocat";
-const repo = "Hello-World";
-const token = process.env.GITHUB_TOKEN; // your API key
-
-async function getCommits() {
-  const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits`, {
-    headers: {
-      Authorization: `token ${token}`,
-      Accept: "application/vnd.github.v3+json"
-    }
-  });
-
-  const commits = await response.json();
-
-  commits.forEach(commit => {
-    console.log("SHA:", commit.sha);
-    console.log("Author username:", commit.author ? commit.author.login : "Unknown");
-    console.log("Commit message:", commit.commit.message);
-    console.log("-----");
-  });
-}
-
-getCommits();
-
-
 async function initializeRepository() {
   console.log('🚀 Starting repository initialization...');
   
