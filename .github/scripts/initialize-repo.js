@@ -1244,22 +1244,37 @@ async function insertFiles(files) {
   console.log(`📁 Inserting ${files.length} files...`);
   
   const batchSize = 100;
+  let totalInserted = 0;
+  let totalSkipped = 0;
+  
   for (let i = 0; i < files.length; i += batchSize) {
     const batch = files.slice(i, i + batchSize);
-    const { error } = await supabase
+    
+    // Use upsert instead of insert to handle duplicates
+    const { data, error } = await supabase
       .from('files')
-      .insert(batch.map(f => ({
+      .upsert(batch.map(f => ({
         canonical_path: f.canonical_path,
         current_path: f.current_path
-      })));
+      })), { 
+        onConflict: 'canonical_path',
+        ignoreDuplicates: false // This will update existing records
+      })
+      .select('canonical_path');
     
     if (error) {
       console.error('Error inserting files batch:', error);
       throw error;
     }
     
-    console.log(`📁 Inserted files batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(files.length/batchSize)}`);
+    // Count how many were actually inserted vs updated
+    const batchCount = data ? data.length : batch.length;
+    totalInserted += batchCount;
+    
+    console.log(`📁 Processed files batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(files.length/batchSize)} (${batchCount} files)`);
   }
+  
+  console.log(`✅ Successfully processed ${totalInserted} files (inserted new + updated existing)`);
 }
 
 async function updateMetadata(key, value) {
