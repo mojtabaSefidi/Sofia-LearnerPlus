@@ -11,6 +11,34 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
+
+const fetch = require("node-fetch");
+
+const owner = "octocat";
+const repo = "Hello-World";
+const token = process.env.GITHUB_TOKEN; // your API key
+
+async function getCommits() {
+  const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits`, {
+    headers: {
+      Authorization: `token ${token}`,
+      Accept: "application/vnd.github.v3+json"
+    }
+  });
+
+  const commits = await response.json();
+
+  commits.forEach(commit => {
+    console.log("SHA:", commit.sha);
+    console.log("Author username:", commit.author ? commit.author.login : "Unknown");
+    console.log("Commit message:", commit.commit.message);
+    console.log("-----");
+  });
+}
+
+getCommits();
+
+
 async function initializeRepository() {
   console.log('🚀 Starting repository initialization...');
   
@@ -21,70 +49,77 @@ async function initializeRepository() {
     // STEP 2: Get all commits
     const log = await git.log({ '--all': null });
     const commits = log.all;
-    
-    console.log(`📊 Found ${commits.length} commits to analyze`);
-    
-    const fileMap = new Map();
-    const contributions = [];
-    
-    // STEP 3: Process commits with resolved contributor data
-    for (const commit of commits.reverse()) {
-      await processCommitWithResolvedContributors(commit, resolvedContributors, fileMap, contributions);
-    }
-    
-    // Continue with existing code for PR processing...
-    console.log('🔄 Starting pull request processing...');
-    const { prContributions, allComments } = await processPullRequests();
-    
-    // Add PR contributors to the contributor map
-    for (const prContrib of prContributions) {
-      if (!Array.from(resolvedContributors.values()).some(c => 
-          c.github_usernames.has(prContrib.contributor_login) || 
-          c.primary_github_login === prContrib.contributor_login)) {
-        
-        // Create new contributor from PR data
-        const newContributor = {
-          primary_github_login: prContrib.contributor_login,
-          canonical_name: prContrib.contributor_login.toLowerCase(),
-          github_usernames: new Set([prContrib.contributor_login]),
-          emails: new Set(),
-          names: new Set(),
-          primary_email: null,
-          priority: 'pr_auto',
-          git_data: []
-        };
-        
-        resolvedContributors.set(prContrib.contributor_login, newContributor);
-      }
-    }
-    
-    // Combine commit and PR contributions
-    contributions.push(...prContributions);
 
-    // Insert files first
-    await insertFiles(Array.from(fileMap.values()));
+    commits.forEach(commit => {
+    console.log("SHA:", commit.sha);
+    console.log("Author username:", commit.author ? commit.author.login : "Unknown");
+    console.log("Commit message:", commit.commit.message);
+    console.log("-----");
+    }
     
-    // Insert contributors (resolved contributors)
-    await insertResolvedContributors(resolvedContributors);
+    // console.log(`📊 Found ${commits.length} commits to analyze`);
+    
+    // const fileMap = new Map();
+    // const contributions = [];
+    
+    // // STEP 3: Process commits with resolved contributor data
+    // for (const commit of commits.reverse()) {
+    //   await processCommitWithResolvedContributors(commit, resolvedContributors, fileMap, contributions);
+    // }
+    
+    // // Continue with existing code for PR processing...
+    // console.log('🔄 Starting pull request processing...');
+    // const { prContributions, allComments } = await processPullRequests();
+    
+    // // Add PR contributors to the contributor map
+    // for (const prContrib of prContributions) {
+    //   if (!Array.from(resolvedContributors.values()).some(c => 
+    //       c.github_usernames.has(prContrib.contributor_login) || 
+    //       c.primary_github_login === prContrib.contributor_login)) {
+        
+    //     // Create new contributor from PR data
+    //     const newContributor = {
+    //       primary_github_login: prContrib.contributor_login,
+    //       canonical_name: prContrib.contributor_login.toLowerCase(),
+    //       github_usernames: new Set([prContrib.contributor_login]),
+    //       emails: new Set(),
+    //       names: new Set(),
+    //       primary_email: null,
+    //       priority: 'pr_auto',
+    //       git_data: []
+    //     };
+        
+    //     resolvedContributors.set(prContrib.contributor_login, newContributor);
+    //   }
+    // }
+    
+    // // Combine commit and PR contributions
+    // contributions.push(...prContributions);
+
+    // // Insert files first
+    // await insertFiles(Array.from(fileMap.values()));
+    
+    // // Insert contributors (resolved contributors)
+    // await insertResolvedContributors(resolvedContributors);
    
-    // Insert contributions with resolved contributor IDs
-    console.log('🔧 Processing contributions with resolved IDs...');
-    await insertContributionsWithResolvedIds(contributions, resolvedContributors);
+    // // Insert contributions with resolved contributor IDs
+    // console.log('🔧 Processing contributions with resolved IDs...');
+    // await insertContributionsWithResolvedIds(contributions, resolvedContributors);
 
-    if (allComments.length > 0) {
-      console.log(`💬 Processing ${allComments.length} review comments...`);
-      await insertReviewComments(allComments);
-    }
+    // if (allComments.length > 0) {
+    //   console.log(`💬 Processing ${allComments.length} review comments...`);
+    //   await insertReviewComments(allComments);
+    // }
     
-    // Update last scan metadata
-    await updateMetadata('last_scan_commit', commits[commits.length - 1].hash);
+    // // Update last scan metadata
+    // await updateMetadata('last_scan_commit', commits[commits.length - 1].hash);
     
-    console.log('✅ Repository initialization completed successfully!');
-    console.log(`📈 Statistics:
-    - Contributors: ${resolvedContributors.size}
-    - Files: ${fileMap.size}  
-    - Contributions: ${contributions.length}
-    - PR Contributions: ${prContributions.length}`);
+    // console.log('✅ Repository initialization completed successfully!');
+    // console.log(`📈 Statistics:
+    // - Contributors: ${resolvedContributors.size}
+    // - Files: ${fileMap.size}  
+    // - Contributions: ${contributions.length}
+    // - PR Contributions: ${prContributions.length}`);
     
   } catch (error) {
     console.error('❌ Error during initialization:', error);
