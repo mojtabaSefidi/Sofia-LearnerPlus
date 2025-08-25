@@ -65,8 +65,9 @@ async function initializeRepository() {
     await insertFiles(Array.from(fileMap.values()));
     
     // Insert contributors (may have duplicates)
-    await insertContributors(Array.from(contributorMap.values()));
-    
+    // await insertContributors(Array.from(contributorMap.values()));
+    await insertResolvedContributors(resolvedContributors);
+   
     // Deduplicate contributors BEFORE processing contributions
     console.log('🔧 Deduplicating contributors...');
     // await deduplicateContributors();
