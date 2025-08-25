@@ -593,13 +593,13 @@ async function getCommitFiles(commitHash) {
 
 async function processCommit(commit, contributorMap, fileMap, contributions) {
   try {
-    console.log(`🔍 Processing commit ${commit.hash} by ${commit.author_name}`);
+    // console.log(`🔍 Processing commit ${commit.hash} by ${commit.author_name}`);
     
     // Use separate git commands for name-status and numstat (Method 2 - the one that works)
     // const nameStatus = await git.show([commit.hash, '--name-status', '--format=']);
     // const numStat = await git.show([commit.hash, '--numstat', '--format=']);
     const { nameStatus, numStat, method } = await getCommitFiles(commit.hash);
-    console.log(`📊 Used ${method} method for commit ${commit.hash}`);
+    // console.log(`📊 Used ${method} method for commit ${commit.hash}`);
     
     // Add debugging
     if (!nameStatus && !numStat) {
@@ -654,13 +654,13 @@ function parseGitShowOutputWithLines(output) {
   const lines = output.split('\n').filter(line => line.trim());
   const files = [];
   
-  console.log(`🔍 Parsing git output with ${lines.length} lines`);
+  // console.log(`🔍 Parsing git output with ${lines.length} lines`);
   
   // Parse numstat lines (additions deletions filename)
   const numstatLines = lines.filter(line => line.match(/^\d+\t\d+\t/) || line.match(/^-\t-\t/));
   const namestatLines = lines.filter(line => line.match(/^[AMDRTCUX]/));
   
-  console.log(`📊 Found ${numstatLines.length} numstat lines, ${namestatLines.length} namestatus lines`);
+  // console.log(`📊 Found ${numstatLines.length} numstat lines, ${namestatLines.length} namestatus lines`);
   
   // Create maps to properly match files by filename
   const numstatMap = new Map();
