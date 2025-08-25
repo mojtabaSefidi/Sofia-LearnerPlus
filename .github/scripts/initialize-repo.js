@@ -55,7 +55,7 @@ async function initializeRepository() {
     console.log("Author username:", commit.author ? commit.author.login : "Unknown");
     console.log("Commit message:", commit.commit.message);
     console.log("-----");
-    }
+    });
     
     // console.log(`📊 Found ${commits.length} commits to analyze`);
     
