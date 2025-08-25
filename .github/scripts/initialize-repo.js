@@ -64,17 +64,12 @@ async function initializeRepository() {
     // Insert files first
     await insertFiles(Array.from(fileMap.values()));
     
-    // Insert contributors (may have duplicates)
-    // await insertContributors(Array.from(contributorMap.values()));
+    // Insert contributors (resolved contributors)
     await insertResolvedContributors(resolvedContributors);
    
-    // Deduplicate contributors BEFORE processing contributions
-    console.log('🔧 Deduplicating contributors...');
-    // await deduplicateContributors();
+    // Insert contributions with resolved contributor IDs
+    console.log('🔧 Processing contributions with resolved IDs...');
     await insertContributionsWithResolvedIds(contributions, resolvedContributors);
-    
-    // Now insert contributions with deduplicated contributor IDs
-    await insertContributionsWithDeduplicatedIds(contributions, contributorMap);
 
     if (allComments.length > 0) {
       console.log(`💬 Processing ${allComments.length} review comments...`);
@@ -86,7 +81,7 @@ async function initializeRepository() {
     
     console.log('✅ Repository initialization completed successfully!');
     console.log(`📈 Statistics:
-    - Contributors: ${contributorMap.size}
+    - Contributors: ${resolvedContributors.size}
     - Files: ${fileMap.size}  
     - Contributions: ${contributions.length}
     - PR Contributions: ${prContributions.length}`);
