@@ -593,15 +593,9 @@ async function getCommitFiles(commitHash) {
 
 async function processCommit(commit, contributorMap, fileMap, contributions) {
   try {
-    // console.log(`🔍 Processing commit ${commit.hash} by ${commit.author_name}`);
-    
-    // Use separate git commands for name-status and numstat (Method 2 - the one that works)
-    // const nameStatus = await git.show([commit.hash, '--name-status', '--format=']);
-    // const numStat = await git.show([commit.hash, '--numstat', '--format=']);
     const { nameStatus, numStat, method } = await getCommitFiles(commit.hash);
-    // console.log(`📊 Used ${method} method for commit ${commit.hash}`);
     
-    // Add debugging
+    // Only log if there's an issue
     if (!nameStatus && !numStat) {
       console.error(`❌ No file changes found for commit ${commit.hash}`);
       return; // Skip empty commits
@@ -610,12 +604,17 @@ async function processCommit(commit, contributorMap, fileMap, contributions) {
     // Combine the outputs
     const combinedOutput = numStat + '\n' + nameStatus;
     const files = parseGitShowOutputWithLines(combinedOutput);
-    // Add this call in processCommit after parsing files:
+    
+    // Only debug specific files
     files.forEach(file => {
       debugSpecificFile(file.file, commit.hash, 'FOUND_IN_COMMIT');
     });
     
-    console.log(`📁 Found ${files.length} files in commit ${commit.hash}`);
+    // Only log if no files found (this indicates a problem)
+    if (files.length === 0) {
+      console.warn(`⚠️ No files parsed for commit ${commit.hash} - Raw output length: ${combinedOutput.length}`);
+      return;
+    }
     
     // Process contributor
     const contributor = await getOrCreateContributor(commit, contributorMap);
@@ -643,7 +642,6 @@ async function processCommit(commit, contributorMap, fileMap, contributions) {
     }
   } catch (error) {
     console.error(`❌ Critical error processing commit ${commit.hash}: ${error.message}`);
-    // Add more details for debugging
     console.error(`   Author: ${commit.author_name} <${commit.author_email}>`);
     console.error(`   Date: ${commit.date}`);
     console.error(`   Message: ${commit.message?.substring(0, 100)}...`);
@@ -654,20 +652,16 @@ function parseGitShowOutputWithLines(output) {
   const lines = output.split('\n').filter(line => line.trim());
   const files = [];
   
-  // console.log(`🔍 Parsing git output with ${lines.length} lines`);
-  
   // Parse numstat lines (additions deletions filename)
   const numstatLines = lines.filter(line => line.match(/^\d+\t\d+\t/) || line.match(/^-\t-\t/));
   const namestatLines = lines.filter(line => line.match(/^[AMDRTCUX]/));
-  
-  // console.log(`📊 Found ${numstatLines.length} numstat lines, ${namestatLines.length} namestatus lines`);
   
   // Create maps to properly match files by filename
   const numstatMap = new Map();
   const namestatMap = new Map();
   
   // Process numstat lines
-  numstatLines.forEach((line, index) => {
+  numstatLines.forEach((line) => {
     const parts = line.split('\t');
     if (parts.length >= 3) {
       // Handle cases where filename might have tabs
@@ -675,17 +669,13 @@ function parseGitShowOutputWithLines(output) {
       const linesAdded = parts[0] === '-' ? 0 : parseInt(parts[0]) || 0;
       const linesDeleted = parts[1] === '-' ? 0 : parseInt(parts[1]) || 0;
       numstatMap.set(filename, { linesAdded, linesDeleted });
-      
-      if (index < 3) { // Debug first few entries
-        console.log(`📊 Numstat: ${filename} (+${linesAdded}, -${linesDeleted})`);
-      }
     } else {
       console.warn(`⚠️ Invalid numstat line: ${line}`);
     }
   });
   
   // Process name-status lines with better handling
-  namestatLines.forEach((line, index) => {
+  namestatLines.forEach((line) => {
     const parts = line.split('\t');
     const status = parts[0];
     let file, oldFile = null;
@@ -711,10 +701,6 @@ function parseGitShowOutputWithLines(output) {
     }
     
     namestatMap.set(file, { status: status[0], oldFile });
-    
-    if (index < 3) { // Debug first few entries
-      console.log(`📁 Namestatus: ${status} ${file} ${oldFile ? `(from ${oldFile})` : ''}`);
-    }
   });
   
   // Combine the data by matching filenames
@@ -724,8 +710,30 @@ function parseGitShowOutputWithLines(output) {
     const numstat = numstatMap.get(filename) || { linesAdded: 0, linesDeleted: 0 };
     const namestat = namestatMap.get(filename) || { status: 'M', oldFile: null };
     
-    // Clean up the filename - remove any git formatting artifacts
-    const cleanFilename = filename.replace(/^{.*?}/, '').trim();
+    // Fix the filename parsing issue - handle git rename format
+    let cleanFilename = filename;
+    
+    // Handle git rename format like "src/{RelationalGit.Data => RelationalGit.Data}/Models/Developer.cs"
+    if (cleanFilename.includes('{') && cleanFilename.includes('}')) {
+      // Extract the pattern: path/{old => new}/restofpath
+      const renameMatch = cleanFilename.match(/^(.*?)\{([^}]*)\}(.*)$/);
+      if (renameMatch) {
+        const [, prefix, renamepart, suffix] = renameMatch;
+        
+        // Split the rename part by " => "
+        const renameParts = renamepart.split(' => ');
+        if (renameParts.length === 2) {
+          const newName = renameParts[1].trim();
+          cleanFilename = prefix + newName + suffix;
+        } else {
+          // If it's just {something}, use the something
+          cleanFilename = prefix + renamepart.trim() + suffix;
+        }
+      }
+    }
+    
+    // Additional cleanup - remove any remaining git formatting artifacts
+    cleanFilename = cleanFilename.replace(/^{.*?}/, '').trim();
     
     files.push({
       status: namestat.status,
@@ -737,14 +745,18 @@ function parseGitShowOutputWithLines(output) {
     });
   });
   
-  console.log(`📁 Parsed ${files.length} files total`);
   return files;
 }
 
 // Add this function to track specific files
 function debugSpecificFile(filename, commitHash, operation) {
-  if (filename.includes('migrate-database.js') || filename.includes('.github/scripts/')) {
+  if (filename.includes('migrate-database.js') || filename.includes('debug-token.js')) {
     console.log(`🔍 DEBUG: ${operation} - ${filename} in commit ${commitHash}`);
+    
+    // Also log if filename has the problematic format
+    if (filename.includes('{') && filename.includes('=>')) {
+      console.log(`🚨 PROBLEMATIC PATH FORMAT: ${filename}`);
+    }
   }
 }
 
