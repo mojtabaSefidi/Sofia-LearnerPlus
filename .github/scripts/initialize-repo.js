@@ -16,18 +16,33 @@ async function initializeRepository() {
   
   try {
     // STEP 1: Detect and resolve all contributors FIRST
-    const resolvedContributors = await detectAllContributors();
-    
-    // STEP 2: Get all commits
-    const log = await git.log({ '--all': null });
+    const log = await git.log({ "--all": null });
     const commits = log.all;
 
-    commits.forEach(commit => {
-    console.log("SHA:", commit.sha);
-    console.log("Author username:", commit.author ? commit.author.login : "Unknown");
-    console.log("Commit message:", commit.commit.message);
-    console.log("-----");
-    });
+    // STEP 2: For each commit, fetch details from GitHub API
+    for (const commit of commits) {
+      const sha = commit.hash;
+
+      // Call GitHub API
+      const { data } = await octokit.repos.getCommit({
+        owner: github.context.repo.owner,
+        repo: github.context.repo.repo,
+        ref: sha
+      });
+
+      console.log("SHA:", sha);
+      console.log("Author username:", data.author ? data.author.login : commit.author_email);
+      console.log("Commit message:", commit.message);
+
+      // Files & line stats
+      data.files.forEach(file => {
+        console.log("File:", file.filename);
+        console.log("Additions:", file.additions);
+        console.log("Deletions:", file.deletions);
+      });
+
+      console.log("-----");
+    }
     
     // console.log(`📊 Found ${commits.length} commits to analyze`);
     
