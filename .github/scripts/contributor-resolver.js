@@ -22,7 +22,8 @@ async function detectAllContributors() {
 
 async function loadManualMappings() {
   try {
-    const mappingPath = path.join(process.cwd(), '.github', 'config', 'contributor-identities.json');
+    const mappingPath = path.join(process.cwd(), 'config', 'contributor-identities.json');
+    console.log(mappingPath)
     const content = await fs.readFile(mappingPath, 'utf8');
     const data = JSON.parse(content);
     
