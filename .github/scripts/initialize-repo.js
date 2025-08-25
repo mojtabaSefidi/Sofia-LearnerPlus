@@ -4,6 +4,7 @@ const { createClient } = require('@supabase/supabase-js');
 const git = require('simple-git')();
 const core = require('@actions/core');
 const { deduplicateContributors } = require('./deduplicate-contributors');
+const { detectAllContributors, findResolvedContributor, createTempContributor, updateWithLatestCommitData } = require('./contributor-resolver');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -14,41 +15,46 @@ async function initializeRepository() {
   console.log('🚀 Starting repository initialization...');
   
   try {
-    // Get all commits
+    // STEP 1: Detect and resolve all contributors FIRST
+    const resolvedContributors = await detectAllContributors();
+    
+    // STEP 2: Get all commits
     const log = await git.log({ '--all': null });
     const commits = log.all;
     
     console.log(`📊 Found ${commits.length} commits to analyze`);
     
-    const contributorMap = new Map();
     const fileMap = new Map();
     const contributions = [];
     
-    // Process commits in chronological order (oldest first)
+    // STEP 3: Process commits with resolved contributor data
     for (const commit of commits.reverse()) {
-      await processCommit(commit, contributorMap, fileMap, contributions);
+      await processCommitWithResolvedContributors(commit, resolvedContributors, fileMap, contributions);
     }
     
-    // Process pull requests and their contributions
+    // Continue with existing code for PR processing...
     console.log('🔄 Starting pull request processing...');
     const { prContributions, allComments } = await processPullRequests();
     
     // Add PR contributors to the contributor map
     for (const prContrib of prContributions) {
-      if (!contributorMap.has(prContrib.contributor_login)) {
-        contributorMap.set(prContrib.contributor_login, {
-          github_login: prContrib.contributor_login,
-          canonical_name: prContrib.contributor_login,
-          email: null // We don't have email from PR API
-        });
-      }
-      
-      // Add file to file map if not exists
-      if (!fileMap.has(prContrib.file_path)) {
-        fileMap.set(prContrib.file_path, {
-          canonical_path: prContrib.file_path,
-          current_path: prContrib.file_path
-        });
+      if (!Array.from(resolvedContributors.values()).some(c => 
+          c.github_usernames.has(prContrib.contributor_login) || 
+          c.primary_github_login === prContrib.contributor_login)) {
+        
+        // Create new contributor from PR data
+        const newContributor = {
+          primary_github_login: prContrib.contributor_login,
+          canonical_name: prContrib.contributor_login.toLowerCase(),
+          github_usernames: new Set([prContrib.contributor_login]),
+          emails: new Set(),
+          names: new Set(),
+          primary_email: null,
+          priority: 'pr_auto',
+          git_data: []
+        };
+        
+        resolvedContributors.set(prContrib.contributor_login, newContributor);
       }
     }
     
@@ -63,7 +69,8 @@ async function initializeRepository() {
     
     // Deduplicate contributors BEFORE processing contributions
     console.log('🔧 Deduplicating contributors...');
-    await deduplicateContributors();
+    // await deduplicateContributors();
+    await insertContributionsWithResolvedIds(contributions, resolvedContributors);
     
     // Now insert contributions with deduplicated contributor IDs
     await insertContributionsWithDeduplicatedIds(contributions, contributorMap);
@@ -148,6 +155,99 @@ async function processPullRequests() {
     console.error('❌ Error processing pull requests:', error);
     throw error;
   }
+}
+
+async function insertContributionsWithResolvedIds(contributions, resolvedContributors) {
+  if (contributions.length === 0) return;
+  
+  console.log(`🔗 Processing ${contributions.length} contributions with resolved IDs...`);
+  
+  // Get the contributors and files from database
+  const { data: dbContributors, error: contributorError } = await supabase
+    .from('contributors')
+    .select('id, github_login');
+    
+  if (contributorError) {
+    console.error('Error fetching contributors:', contributorError);
+    throw contributorError;
+  }
+    
+  const { data: dbFiles, error: filesError } = await supabase
+    .from('files')
+    .select('id, canonical_path');
+  
+  if (filesError) {
+    console.error('Error fetching files:', filesError);
+    throw filesError;
+  }
+  
+  // Create lookup maps
+  const contributorLookup = new Map();
+  dbContributors.forEach(c => {
+    contributorLookup.set(c.github_login.toLowerCase(), c.id);
+  });
+  
+  const fileLookup = new Map();
+  dbFiles.forEach(f => {
+    fileLookup.set(f.canonical_path, f.id);
+  });
+  
+  // Map contributions to database IDs
+  const mappedContributions = [];
+  let skippedCount = 0;
+  
+  for (const contribution of contributions) {
+    const contributorId = contributorLookup.get(contribution.contributor_login.toLowerCase());
+    
+    // Handle null file_path (commits with no file changes)
+    let fileId = null;
+    if (contribution.file_path !== null) {
+      fileId = fileLookup.get(contribution.file_path);
+      if (!fileId) {
+        skippedCount++;
+        continue;
+      }
+    }
+    
+    if (contributorId) {
+      mappedContributions.push({
+        contributor_id: contributorId,
+        file_id: fileId, // Can be null for commits without file changes
+        activity_type: contribution.activity_type,
+        activity_id: contribution.activity_id,
+        contribution_date: contribution.contribution_date,
+        lines_added: contribution.lines_added || 0,
+        lines_deleted: contribution.lines_deleted || 0,
+        lines_modified: contribution.lines_modified || 0,
+        pr_number: contribution.pr_number || null
+      });
+    } else {
+      skippedCount++;
+    }
+  }
+  
+  console.log(`🔗 Mapped ${mappedContributions.length} contributions (skipped ${skippedCount})`);
+  
+  // Insert in batches
+  const batchSize = 500;
+  let totalInserted = 0;
+  
+  for (let i = 0; i < mappedContributions.length; i += batchSize) {
+    const batch = mappedContributions.slice(i, i + batchSize);
+    const { error } = await supabase
+      .from('contributions')
+      .insert(batch);
+    
+    if (error) {
+      console.error('Error inserting contributions batch:', error);
+      throw error;
+    }
+    
+    totalInserted += batch.length;
+    console.log(`🔗 Inserted contributions batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(mappedContributions.length/batchSize)} (${totalInserted} total)`);
+  }
+  
+  console.log(`✅ Successfully inserted ${totalInserted} contributions`);
 }
 
 async function insertReviewComments(comments) {
@@ -591,41 +691,51 @@ async function getCommitFiles(commitHash) {
   }
 }
 
-async function processCommit(commit, contributorMap, fileMap, contributions) {
+async function processCommitWithResolvedContributors(commit, resolvedContributors, fileMap, contributions) {
   try {
-    const { nameStatus, numStat, method } = await getCommitFiles(commit.hash);
+    const { nameStatus, numStat } = await getCommitFiles(commit.hash);
     
-    // Only log if there's an issue
     if (!nameStatus && !numStat) {
-      console.error(`❌ No file changes found for commit ${commit.hash}`);
-      return; // Skip empty commits
+      console.warn(`⚠️ No file changes found for commit ${commit.hash}, but processing anyway`);
     }
     
-    // Combine the outputs
-    const combinedOutput = numStat + '\n' + nameStatus;
+    const combinedOutput = (numStat || '') + '\n' + (nameStatus || '');
     const files = parseGitShowOutputWithLines(combinedOutput);
     
-    // Only debug specific files
-    files.forEach(file => {
-      debugSpecificFile(file.file, commit.hash, 'FOUND_IN_COMMIT');
-    });
+    // Find the resolved contributor for this commit
+    let contributor = findResolvedContributor(commit, resolvedContributors);
     
-    // Only log if no files found (this indicates a problem)
-    if (files.length === 0) {
-      console.warn(`⚠️ No files parsed for commit ${commit.hash} - Raw output length: ${combinedOutput.length}`);
-      return;
+    if (!contributor) {
+      console.error(`❌ Could not resolve contributor for commit ${commit.hash} (${commit.author_name} <${commit.author_email}>)`);
+      // DON'T SKIP - create a temporary contributor
+      const tempContributor = createTempContributor(commit);
+      resolvedContributors.set(tempContributor.primary_github_login, tempContributor);
+      contributor = tempContributor;
     }
     
-    // Process contributor
-    const contributor = await getOrCreateContributor(commit, contributorMap);
-    
-    // Process each file in the commit
-    for (const fileChange of files) {
-      try {
+    // Process files (even if empty - some commits might have no file changes)
+    if (files.length === 0) {
+      // Create a placeholder contribution for commits with no file changes
+      contributions.push({
+        contributor_login: contributor.primary_github_login,
+        contributor_email: contributor.primary_email,
+        contributor_canonical_name: contributor.canonical_name,
+        file_path: null, // Special marker for commits without file changes
+        activity_type: 'commit',
+        activity_id: commit.hash,
+        contribution_date: new Date(commit.date),
+        lines_added: 0,
+        lines_deleted: 0,
+        lines_modified: 0
+      });
+    } else {
+      // Process each file normally
+      for (const fileChange of files) {
         const file = await getOrCreateFile(fileChange, fileMap);
         
         contributions.push({
-          contributor_email: contributor.email,
+          contributor_login: contributor.primary_github_login,
+          contributor_email: contributor.primary_email,
           contributor_canonical_name: contributor.canonical_name,
           file_path: file.canonical_path,
           activity_type: 'commit',
@@ -635,17 +745,76 @@ async function processCommit(commit, contributorMap, fileMap, contributions) {
           lines_deleted: fileChange.linesDeleted || 0,
           lines_modified: fileChange.linesModified || 0
         });
-      } catch (fileError) {
-        console.error(`❌ Error processing file ${fileChange.file} in commit ${commit.hash}:`, fileError);
-        // Continue with other files instead of skipping entire commit
       }
     }
+    
   } catch (error) {
-    console.error(`❌ Critical error processing commit ${commit.hash}: ${error.message}`);
-    console.error(`   Author: ${commit.author_name} <${commit.author_email}>`);
-    console.error(`   Date: ${commit.date}`);
-    console.error(`   Message: ${commit.message?.substring(0, 100)}...`);
+    console.error(`❌ Error processing commit ${commit.hash}: ${error.message}`);
+    // Don't skip - process as no-file-change commit
   }
+}
+
+async function insertResolvedContributors(resolvedContributors) {
+  if (resolvedContributors.size === 0) return;
+  
+  console.log(`📝 Inserting ${resolvedContributors.size} resolved contributors...`);
+  
+  const contributorsToInsert = Array.from(resolvedContributors.values()).map(contributor => {
+    // Ensure we have the latest data
+    updateWithLatestCommitData(contributor);
+    
+    return {
+      github_login: contributor.primary_github_login,
+      canonical_name: contributor.canonical_name,
+      email: contributor.primary_email || contributor.latest_email || Array.from(contributor.emails)[0] || null,
+      // Store additional metadata for debugging
+      first_seen: contributor.first_seen || null,
+      last_seen: contributor.last_seen || contributor.latest_commit_date || null,
+      total_commits: contributor.git_data ? contributor.git_data.length : 0
+    };
+  });
+  
+  // Sort by last activity (most recent first) for better logging
+  contributorsToInsert.sort((a, b) => {
+    const dateA = a.last_seen || new Date(0);
+    const dateB = b.last_seen || new Date(0);
+    return dateB - dateA;
+  });
+  
+  console.log('\n📊 Contributors to insert (sorted by latest activity):');
+  contributorsToInsert.slice(0, 10).forEach(c => {
+    const lastSeen = c.last_seen ? c.last_seen.toISOString().split('T')[0] : 'unknown';
+    console.log(`   ${c.github_login}: ${c.canonical_name} <${c.email}> (${c.total_commits} commits, latest: ${lastSeen})`);
+  });
+  if (contributorsToInsert.length > 10) {
+    console.log(`   ... and ${contributorsToInsert.length - 10} more`);
+  }
+  
+  // Insert in batches
+  const batchSize = 50;
+  let totalInserted = 0;
+  
+  for (let i = 0; i < contributorsToInsert.length; i += batchSize) {
+    const batch = contributorsToInsert.slice(i, i + batchSize).map(c => ({
+      github_login: c.github_login,
+      canonical_name: c.canonical_name,
+      email: c.email
+    }));
+    
+    const { error } = await supabase
+      .from('contributors')
+      .upsert(batch, { onConflict: 'github_login' });
+    
+    if (error) {
+      console.error('Error inserting contributors batch:', error);
+      throw error;
+    }
+    
+    totalInserted += batch.length;
+    console.log(`📝 Inserted contributors batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(contributorsToInsert.length/batchSize)}`);
+  }
+  
+  console.log(`✅ Successfully inserted ${totalInserted} contributors with latest data`);
 }
 
 function parseGitShowOutputWithLines(output) {
