@@ -570,37 +570,79 @@ async function insertContributionsWithDeduplicatedIds(contributions, originalCon
   console.log(`✅ Successfully inserted ${totalInserted} contributions`);
 }
 
+async function getCommitFiles(commitHash) {
+  try {
+    // Method 1: Try the current approach
+    const nameStatus = await git.show([commitHash, '--name-status', '--format=']);
+    const numStat = await git.show([commitHash, '--numstat', '--format=']);
+    return { nameStatus, numStat, method: 'show' };
+  } catch (error) {
+    console.warn(`⚠️ git show failed for ${commitHash}, trying diff-tree...`);
+    
+    try {
+      // Method 2: Use diff-tree as fallback
+      const nameStatus = await git.raw(['diff-tree', '--no-commit-id', '--name-status', '-r', commitHash]);
+      const numStat = await git.raw(['diff-tree', '--no-commit-id', '--numstat', '-r', commitHash]);
+      return { nameStatus, numStat, method: 'diff-tree' };
+    } catch (diffError) {
+      console.error(`❌ Both git show and diff-tree failed for ${commitHash}:`, diffError);
+      throw diffError;
+    }
+  }
+}
+
 async function processCommit(commit, contributorMap, fileMap, contributions) {
   try {
+    console.log(`🔍 Processing commit ${commit.hash} by ${commit.author_name}`);
+    
     // Use separate git commands for name-status and numstat (Method 2 - the one that works)
-    const nameStatus = await git.show([commit.hash, '--name-status', '--format=']);
-    const numStat = await git.show([commit.hash, '--numstat', '--format=']);
+    // const nameStatus = await git.show([commit.hash, '--name-status', '--format=']);
+    // const numStat = await git.show([commit.hash, '--numstat', '--format=']);
+    const { nameStatus, numStat, method } = await getCommitFiles(commit.hash);
+    console.log(`📊 Used ${method} method for commit ${commit.hash}`);
+    
+    // Add debugging
+    if (!nameStatus && !numStat) {
+      console.error(`❌ No file changes found for commit ${commit.hash}`);
+      return; // Skip empty commits
+    }
     
     // Combine the outputs
     const combinedOutput = numStat + '\n' + nameStatus;
     const files = parseGitShowOutputWithLines(combinedOutput);
+    
+    console.log(`📁 Found ${files.length} files in commit ${commit.hash}`);
     
     // Process contributor
     const contributor = await getOrCreateContributor(commit, contributorMap);
     
     // Process each file in the commit
     for (const fileChange of files) {
-      const file = await getOrCreateFile(fileChange, fileMap);
-      
-      contributions.push({
-        contributor_email: contributor.email,
-        contributor_canonical_name: contributor.canonical_name,
-        file_path: file.canonical_path,
-        activity_type: 'commit',
-        activity_id: commit.hash,
-        contribution_date: new Date(commit.date),
-        lines_added: fileChange.linesAdded || 0,
-        lines_deleted: fileChange.linesDeleted || 0,
-        lines_modified: fileChange.linesModified || 0
-      });
+      try {
+        const file = await getOrCreateFile(fileChange, fileMap);
+        
+        contributions.push({
+          contributor_email: contributor.email,
+          contributor_canonical_name: contributor.canonical_name,
+          file_path: file.canonical_path,
+          activity_type: 'commit',
+          activity_id: commit.hash,
+          contribution_date: new Date(commit.date),
+          lines_added: fileChange.linesAdded || 0,
+          lines_deleted: fileChange.linesDeleted || 0,
+          lines_modified: fileChange.linesModified || 0
+        });
+      } catch (fileError) {
+        console.error(`❌ Error processing file ${fileChange.file} in commit ${commit.hash}:`, fileError);
+        // Continue with other files instead of skipping entire commit
+      }
     }
   } catch (error) {
-    console.warn(`⚠️ Could not process commit ${commit.hash}: ${error.message}`);
+    console.error(`❌ Critical error processing commit ${commit.hash}: ${error.message}`);
+    // Add more details for debugging
+    console.error(`   Author: ${commit.author_name} <${commit.author_email}>`);
+    console.error(`   Date: ${commit.date}`);
+    console.error(`   Message: ${commit.message?.substring(0, 100)}...`);
   }
 }
 
@@ -608,39 +650,67 @@ function parseGitShowOutputWithLines(output) {
   const lines = output.split('\n').filter(line => line.trim());
   const files = [];
   
+  console.log(`🔍 Parsing git output with ${lines.length} lines`);
+  
   // Parse numstat lines (additions deletions filename)
   const numstatLines = lines.filter(line => line.match(/^\d+\t\d+\t/) || line.match(/^-\t-\t/));
-  const namestatLines = lines.filter(line => line.match(/^[AMDRT]/));
+  const namestatLines = lines.filter(line => line.match(/^[AMDRTCUX]/));
+  
+  console.log(`📊 Found ${numstatLines.length} numstat lines, ${namestatLines.length} namestatus lines`);
   
   // Create maps to properly match files by filename
   const numstatMap = new Map();
   const namestatMap = new Map();
   
   // Process numstat lines
-  numstatLines.forEach((line) => {
+  numstatLines.forEach((line, index) => {
     const parts = line.split('\t');
     if (parts.length >= 3) {
-      const filename = parts[2];
+      // Handle cases where filename might have tabs
+      const filename = parts.slice(2).join('\t');
       const linesAdded = parts[0] === '-' ? 0 : parseInt(parts[0]) || 0;
       const linesDeleted = parts[1] === '-' ? 0 : parseInt(parts[1]) || 0;
       numstatMap.set(filename, { linesAdded, linesDeleted });
+      
+      if (index < 3) { // Debug first few entries
+        console.log(`📊 Numstat: ${filename} (+${linesAdded}, -${linesDeleted})`);
+      }
+    } else {
+      console.warn(`⚠️ Invalid numstat line: ${line}`);
     }
   });
   
-  // Process name-status lines
-  namestatLines.forEach((line) => {
+  // Process name-status lines with better handling
+  namestatLines.forEach((line, index) => {
     const parts = line.split('\t');
     const status = parts[0];
     let file, oldFile = null;
     
+    // Handle different status types
     if (status.startsWith('R') || status.startsWith('C')) {
-      oldFile = parts[1];
-      file = parts[2];
+      // Rename/Copy: R100  old_name  new_name
+      if (parts.length >= 3) {
+        oldFile = parts[1];
+        file = parts[2];
+      } else {
+        console.warn(`⚠️ Invalid rename line: ${line}`);
+        return;
+      }
     } else {
-      file = parts[1];
+      // Add/Modify/Delete: A  filename
+      if (parts.length >= 2) {
+        file = parts.slice(1).join('\t'); // Handle filenames with tabs
+      } else {
+        console.warn(`⚠️ Invalid namestatus line: ${line}`);
+        return;
+      }
     }
     
     namestatMap.set(file, { status: status[0], oldFile });
+    
+    if (index < 3) { // Debug first few entries
+      console.log(`📁 Namestatus: ${status} ${file} ${oldFile ? `(from ${oldFile})` : ''}`);
+    }
   });
   
   // Combine the data by matching filenames
@@ -650,9 +720,12 @@ function parseGitShowOutputWithLines(output) {
     const numstat = numstatMap.get(filename) || { linesAdded: 0, linesDeleted: 0 };
     const namestat = namestatMap.get(filename) || { status: 'M', oldFile: null };
     
+    // Clean up the filename - remove any git formatting artifacts
+    const cleanFilename = filename.replace(/^{.*?}/, '').trim();
+    
     files.push({
       status: namestat.status,
-      file: filename,
+      file: cleanFilename,
       oldFile: namestat.oldFile,
       linesAdded: numstat.linesAdded,
       linesDeleted: numstat.linesDeleted,
@@ -660,9 +733,40 @@ function parseGitShowOutputWithLines(output) {
     });
   });
   
+  console.log(`📁 Parsed ${files.length} files total`);
   return files;
 }
 
+// Add this function to track specific files
+function debugSpecificFile(filename, commitHash, operation) {
+  if (filename.includes('migrate-database.js') || filename.includes('.github/scripts/')) {
+    console.log(`🔍 DEBUG: ${operation} - ${filename} in commit ${commitHash}`);
+  }
+}
+
+// Add this call in processCommit after parsing files:
+files.forEach(file => {
+  debugSpecificFile(file.file, commit.hash, 'FOUND_IN_COMMIT');
+});
+
+// Add this call in getOrCreateFile:
+async function getOrCreateFile(fileChange, fileMap) {
+  const path = fileChange.file;
+  debugSpecificFile(path, 'N/A', 'CREATING_FILE_RECORD');
+  
+  let file = fileMap.get(path);
+  
+  if (!file) {
+    file = {
+      canonical_path: path,
+      current_path: path
+    };
+    fileMap.set(path, file);
+    debugSpecificFile(path, 'N/A', 'NEW_FILE_ADDED_TO_MAP');
+  }
+  
+  return file;
+}
 
 async function getOrCreateContributor(commit, contributorMap) {
   const email = commit.author_email;
@@ -883,20 +987,20 @@ function createTemporaryGitHubLogin(name, email) {
   return safe || 'unknown';
 }
 
-async function getOrCreateFile(fileChange, fileMap) {
-  const path = fileChange.file;
-  let file = fileMap.get(path);
+// async function getOrCreateFile(fileChange, fileMap) {
+//   const path = fileChange.file;
+//   let file = fileMap.get(path);
   
-  if (!file) {
-    file = {
-      canonical_path: path,
-      current_path: path
-    };
-    fileMap.set(path, file);
-  }
+//   if (!file) {
+//     file = {
+//       canonical_path: path,
+//       current_path: path
+//     };
+//     fileMap.set(path, file);
+//   }
   
-  return file;
-}
+//   return file;
+// }
 
 function normalizeName(name) {
   return name
