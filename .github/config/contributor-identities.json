@@ -1,0 +1,34 @@
+{
+  "contributors": [
+    {
+      "primary_github_login": "mirsaeedi",
+      "canonical_name": "ehsanmirsaeedi", 
+      "github_usernames": ["mirsaeedi", "ehsan"],
+      "emails": [
+      ],
+      "names": [
+      ],
+      "priority": "manual"
+    },
+    {
+      "primary_github_login": "fahimeh1368",
+      "canonical_name": "fahimehhajari", 
+      "github_usernames": ["fahimeh1368", "fahimehhajari"],
+      "emails": [
+      ],
+      "names": [
+      ],
+      "priority": "manual"
+    },
+    {
+      "primary_github_login": "saman9452",
+      "canonical_name": "samanemalmir", 
+      "github_usernames": ["saman9452", "samanemalmir73"],
+      "emails": [
+      ],
+      "names": [
+      ],
+      "priority": "manual"
+    },
+  ]
+}
