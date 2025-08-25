@@ -74,7 +74,7 @@ async function initializeRepository() {
     }
     
     // Update last scan metadata
-    await updateMetadata('last_scan_commit', commits[0].hash);
+    await updateMetadata('last_scan_commit', commits[commits.length - 1].hash);
     
     console.log('✅ Repository initialization completed successfully!');
     console.log(`📈 Statistics:
