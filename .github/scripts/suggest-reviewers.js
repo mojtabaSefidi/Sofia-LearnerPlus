@@ -499,37 +499,49 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
 
 ### Author Knowledge: ${prAuthor}
 
-| ChangedFile | Change Type | NumKnowledgable | Change Size | NumCommit | Last Commit Date | NumReview | Last Review Date | Author CxFactor |
-|-------------|-------------|-----------------|-------------|-----------|------------------|-----------|------------------|-----------------|
+| ChangedFile | Change Type | #Knowledgable   | Change Size |  #Commit  | Last Commit Date | #Review   | Last Review Date | Author Level of Expertise |
+|-------------|-------------|-----------------|-------------|-----------|------------------|-----------|------------------|---------------------------|
 `;
 
   // Categorize files
   const abandonedFiles = [];
   const hoardedFiles = [];
+  const authorNoCxFiles = []; // files where author CxFactor === 0
 
   fileAnalysis.forEach(file => {
-
     const changeSizeText = (typeof file.changeSize === 'number') ? file.changeSize : 'N/A';
     const cxText = (typeof file.authorCxFactor === 'number') ? file.authorCxFactor.toFixed(3) : '0.000';
 
-    comment += `| \`${file.filename}\` | ${file.changeType} | ${file.numKnowledgable} | ${changeSizeText} | ${file.authorNumCommits} | ${timeAgo(file.authorLastCommitDate)} | ${file.authorNumReviews} | ${timeAgo(file.authorLastReviewDate)} | ${cxText} |\n`;
+    // Collect file risk categories
+    if (typeof file.numKnowledgable === 'number') {
+      if (file.numKnowledgable === 0) abandonedFiles.push(file.filename);
+      else if (file.numKnowledgable === 1) hoardedFiles.push(file.filename);
+    } else {
+      // If numKnowledgable missing, treat conservatively as "abandoned"
+      abandonedFiles.push(file.filename);
+    }
 
+    if (typeof file.authorCxFactor === 'number' && file.authorCxFactor === 0) {
+      authorNoCxFiles.push(file.filename);
+    }
+
+    comment += `| \`${file.filename}\` | ${file.changeType} | ${file.numKnowledgable} | ${changeSizeText} | ${file.authorNumCommits} | ${timeAgo(file.authorLastCommitDate)} | ${file.authorNumReviews} | ${timeAgo(file.authorLastReviewDate)} | ${cxText} |\n`;
   });
 
   comment += `
   
   **Column descriptions:**
-  - **NumKnowledgable**: Number of developers (excluding PR author) who have prior commits or reviews on this file.
+  - **#Knowledgable**: Number of developers (excluding PR author) who have prior commits or reviews on this file.
   - **Change Size**: Total lines changed in this PR for the file (additions + deletions).
-  - **NumCommit**: Number of prior commits made by the PR author on this file (excluding the current PR commits).
+  - **#Commit**: Number of prior commits made by the PR author on this file (excluding the current PR commits).
   - **Last Commit Date**: Date of the author's most recent prior commit on this file.
-  - **NumReview**: Number of times the PR author acted as a reviewer on this file prior to this PR.
+  - **#Review**: Number of times the PR author acted as a reviewer on this file prior to this PR.
   - **Last Review Date**: Date of the author's most recent prior review activity on this file.
-  - **Author CxFactor**: Author's levels of expertise on this file.
+  - **Author Level of Expertise**: Author's CxFactor score on this file.
   `;
   
   // Add enhanced reviewer suggestions with LEARNS column
-  if (reviewerMetrics.length === 0) {
+  if (!Array.isArray(reviewerMetrics) || reviewerMetrics.length === 0) {
     comment += `\n### 👥 Reviewer Records
 
 No developers found with prior experience on these files. Consider assigning reviewers based on:
@@ -537,10 +549,10 @@ No developers found with prior experience on these files. Consider assigning rev
 - Code architecture knowledge
 - Subject matter expertise`;
   } else {
-    comment += `\n### 👥 Reviewer Records
+    comment += `\n### 👥 Candidate Records
 
-| Developer | Knows | Learns | LastCommit | LastModificationOnPR | PR-Commits | Total-Commits | PR-Reviews | Total-Reviews | A-Months | Workload Share | Percentile Rank | Relative To Mean | ΔGiniWorkload(Absolute) | AvgTime(h) | AvgSize(line) | line/hour |
-|-----------|-------|--------|------------|----------------------|------------|---------------|------------|---------------|----------|----------------|-----------------|------------------|-------------------------|------------|---------------|-----------|
+| Developer | Knows | Learns | Last Commit | Last Modification On PR Files | PR Commits | Last Year Commits | PR Reviews | Last Year Reviews | Active-Months | Workload Share | Percentile Rank | Relative To Mean | ΔGiniWorkload(Absolute) | AvgTime(h) | AvgSize(line) | line/hour |
+|-----------|-------|--------|-------------|-------------------------------|------------|-------------------|------------|-------------------|---------------|----------------|-----------------|------------------|-------------------------|------------|---------------|-----------|
 `;
 
     const formatNumber = (num, decimals = 1) =>
@@ -552,30 +564,52 @@ No developers found with prior experience on these files. Consider assigning rev
 
     comment += `\n**Columns Description:**
 - **Knows**: Files in this PR the reviewer has worked on before  
-- **Learns**: Files in this PR new to the reviewer (${filePaths.length} total - Knows)  
-- **LastCommit**: Date of last commit (any file, all time)
-- **LastModificationOnPR**: Date of last modification in any of this PR's files (all time)
-- **PR-Commits**: Number of commits on files in this PR
-- **Total-Commits**: Total commits in the last year
-- **PR-Reviews**: Number of reviews on files in this PR
-- **Total-Reviews**: Total reviews in the last year
-- **A-Months**: Active months in the last year
+- **Learns**: Files in this PR that are new to the reviewer
+- **Last Commit**: Date of last commit on any file
+- **Last Modification On PR Files**: Date of last modification in any of this PR's files
+- **PR Commits**: Number of commits on files in this PR
+- **Last Year Commits**: Total commits in the last year
+- **PR Reviews**: Number of reviews on files in this PR
+- **Last Year Reviews**: Total reviews in the last year
+- **Active-Months**: Active months in the last year
 - **Workload Share**: Percentage of total reviews in the last quarter  
 - **Percentile Rank**: Position in team workload distribution  
 - **Relative To Mean**: Deviation from the team average workload  
-- **ΔGiniWorkload(Absolute)**: Gini coefficient of workload inequality  
-- **AvgTime(h)**: Average review time in hours  
-- **AvgSize(line)**: Average diff size in lines  
+- **ΔGiniWorkload(Absolute)**: The absolute change in Gini-Workload of the development team if this candidate is selected  
+- **AvgTime(h)**: Average review time in hours
+- **AvgSize(line)**: Average review size in lines
 - **line/hour**: Lines reviewed per hour  
 `;
 
-    const RecommendationScores = reviewerMetrics
-      .sort((a, b) => b.cxFactorScore - a.cxFactorScore);
+    // Prepare sorted lists for recommendations (safe numeric defaults)
+    const metricsWithDefaults = reviewerMetrics.map(m => ({
+      login: m.login,
+      cxFactorScore: (typeof m.cxFactorScore === 'number') ? m.cxFactorScore : 0,
+      turnoverRecScore: (typeof m.turnoverRecScore === 'number') ? m.turnoverRecScore : 0,
+      knownFilesList: Array.isArray(m.knownFilesList) ? m.knownFilesList : []
+    }));
+
+    // Utility: pick top N by primary metric then tie-breaker, excluding PR author
+    function pickTopCandidates(primaryKey, tieKey, count = 1) {
+      const candidates = metricsWithDefaults
+        .filter(m => m.login !== prAuthor)
+        .slice() // copy
+        .sort((a, b) => {
+          if (b[primaryKey] === a[primaryKey]) {
+            return (b[tieKey] || 0) - (a[tieKey] || 0);
+          }
+          return (b[primaryKey] || 0) - (a[primaryKey] || 0);
+        });
+      return candidates.slice(0, count).map(c => c.login);
+    }
+
+    // Candidate Score table (sorted by expertise)
+    const RecommendationScores = metricsWithDefaults.slice().sort((a, b) => (b.cxFactorScore || 0) - (a.cxFactorScore || 0));
 
     if (RecommendationScores.length > 0) {
-      comment += `\n### 🎯 CxFactor Expertise Scores
+      comment += `\n### 🎯 Candidate Score
 
-| Developer | CxFactor Score | Knowledge Distribution Score |
+| Developer | Expertise Score | Knowledge Distribution Score |
 |-----------|----------------|------------------------------|
 `;
 
@@ -583,27 +617,91 @@ No developers found with prior experience on these files. Consider assigning rev
         comment += `| ${metrics.login} | ${(metrics.cxFactorScore || 0).toFixed(3)} | ${(metrics.turnoverRecScore || 0).toFixed(3)} |\n`;
       });
 
-  comment += `\n**CxFactor Score**: ACHRev expertise score (0-1) based on review history, commit history, work patterns, and recency of contributions on PR files.
-**Knowledge Distribution Score**: TurnoverRec score combining learning potential and retention likelihood.
-`;
-}
-    
-// ### File Knowledge Breakdown
-//     reviewerMetrics.forEach(metrics => {
-//       if (metrics.knownFilesList.length > 0) {
-//         comment += `**${metrics.login}** knows these files:\n`;
-//         metrics.knownFilesList.forEach(file => {
-//           comment += `- \`${file}\`\n`;
-//         });
-//         comment += '\n';
-//       }
-//     });
-    
-  }
-  
+      comment += `\n**CxFactor Score**: ACHRev expertise score (0-1) based on review history, commit history, work patterns, and recency of contributions on PR files.  
+**Knowledge Distribution Score**: TurnoverRec score combining learning potential and retention likelihood.`;
+    }
+  } // end else reviewerMetrics present
+
+  // --- Build suggestions based on conditions ---
+  const totalFiles = filePaths.length || 1; // avoid division by zero
+  const hoardedCount = hoardedFiles.length;
+  const abandonedCount = abandonedFiles.length;
+  const authorNoCxCount = authorNoCxFiles.length;
+  const hoardedFraction = hoardedCount / totalFiles;
+
   comment += `\n---
-*Suggestions:`;
-  
+*Suggestions:\n\n`;
+
+  // Helper to format file lists
+  function formatFileList(list) {
+    if (!list || list.length === 0) return '_None_';
+    return list.map(f => `- \`${f}\``).join('\n');
+  }
+
+  // Condition priority: 4 > 3 > 2 > 1
+  const hasCondition4 = ( (abandonedCount > 0 || hoardedFraction > 0.5) && authorNoCxCount > 0 );
+  const hasCondition3 = (abandonedCount > 0 || hoardedFraction > 0.5);
+  const hasCondition2 = (hoardedCount > 0 && hoardedFraction <= 0.5);
+  const hasCondition1 = (authorNoCxCount > 0);
+
+  // Candidate picking functions (respect tie-breakers)
+  function pickExpert(count = 1) {
+    return pickTopCandidates('cxFactorScore', 'turnoverRecScore', count);
+  }
+  function pickLearner(count = 1) {
+    return pickTopCandidates('turnoverRecScore', 'cxFactorScore', count);
+  }
+
+  // Execute suggestions
+  if (hasCondition4) {
+    // Condition 4: abandoned or >50% hoarded AND author first-touch on some files
+    const learners = pickLearner(1);
+    const experts = pickExpert(1);
+    comment += `- **Risk summary:** Among the modified files in this PR, we see **${abandonedCount} abandoned** and **${hoardedCount} hoarded** file(s).\n\n`;
+    comment += `  **Abandoned files:**\n${formatFileList(abandonedFiles)}\n\n  **Hoarded files:**\n${formatFileList(hoardedFiles)}\n\n`;
+    if (authorNoCxCount > 0) {
+      comment += `  Additionally, the PR author has **no prior experience** on these file(s):\n${formatFileList(authorNoCxFiles)}\n\n`;
+    }
+    comment += `  **Recommendation:** Assign **two reviewers**:\n`;
+    if (learners.length > 0) {
+      comment += `  - A committed **learner** to distribute knowledge: ${learners.join(', ')}\n`;
+    } else {
+      comment += `  - No suitable learner candidate found automatically — please assign a learner manually.\n`;
+    }
+    if (experts.length > 0) {
+      comment += `  - An **expert reviewer** to ensure safety: ${experts.join(', ')}\n`;
+    } else {
+      comment += `  - No suitable expert candidate found automatically — please assign an expert manually.\n`;
+    }
+    comment += `\n  *Rationale:* The combination of abandoned/hoarded files and the author's first-time edits increases risk; pairing knowledge distribution with expert validation reduces defect and turnover risk.\n\n`;
+  } else if (hasCondition3) {
+    // Condition 3: abandoned files exist OR more than 50% hoarded -> assign two learners
+    const learners = pickLearner(2);
+    comment += `- **Risk summary:** Among the modified files in this PR, we see **${abandonedCount} abandoned** and **${hoardedCount} hoarded** file(s).\n\n`;
+    comment += `  **Abandoned files:**\n${formatFileList(abandonedFiles)}\n\n  **Hoarded files:**\n${formatFileList(hoardedFiles)}\n\n`;
+    comment += `  **Recommendation:** Assign **two learners** to distribute knowledge more broadly: ${learners.length > 0 ? learners.join(', ') : '_No suitable candidates found automatically_'}\n\n`;
+    comment += `  *Rationale:* Abandoned files or majority-hoarded PRs indicate concentrated knowledge risk; two learners help spread knowledge and reduce turnover risk.\n\n`;
+  } else if (hasCondition2) {
+    // Condition 2: hoarded files exist and <=50% -> assign single learner
+    const learner = pickLearner(1);
+    comment += `- **Risk summary:** There exist **${hoardedCount} hoarded** file(s) in this PR:\n\n`;
+    comment += `${formatFileList(hoardedFiles)}\n\n`;
+    comment += `  **Recommendation:** Assign a **learner** to distribute knowledge: ${learner.length > 0 ? learner[0] : '_No suitable candidate found automatically_'}\n\n`;
+    comment += `  *Rationale:* For small numbers of hoarded files, adding a learner helps spread knowledge without overstaffing the review.\n\n`;
+  } else if (hasCondition1) {
+    // Condition 1: author lacks experience on some files (CxFactor 0) but no abandoned/hoarded major issue
+    const expert = pickExpert(1);
+    comment += `- **Observation:** The author has **no prior experience** on these file(s):\n\n`;
+    comment += `${formatFileList(authorNoCxFiles)}\n\n`;
+    comment += `  **Recommendation:** Assign an **expert reviewer** to reduce defect risk: ${expert.length > 0 ? expert[0] : '_No suitable expert found automatically_'}\n\n`;
+    comment += `  *Rationale:* First-time edits to files increase defect risk; an expert reviewer can mitigate this.\n\n`;
+  } else {
+    comment += `- No immediate knowledge-risk conditions detected (no abandoned files, no hoarded files, and the author has prior experience on files). Continue with normal review.\n\n`;
+  }
+
+  // Final note / guidance
+  comment += `**Note:** Candidate picks were chosen automatically by sorting candidate metrics (expert: highest CxFactor; learner: highest Knowledge Distribution / TurnoverRec score). If workload, availability, or other contextual constraints apply, adjust reviewers accordingly.\n`;
+
   return comment;
 }
 
