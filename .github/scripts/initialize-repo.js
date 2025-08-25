@@ -11,6 +11,11 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
+const { Octokit } = require("@octokit/rest");
+const octokit = new Octokit({
+  auth: process.env.GITHUB_TOKEN
+});
+
 async function initializeRepository() {
   console.log('🚀 Starting repository initialization...');
   
