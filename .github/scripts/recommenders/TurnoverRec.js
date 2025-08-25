@@ -33,13 +33,11 @@ async function turnoverRec_suggestion(
   const windowStartDate = new Date(prRefDate.getTime() - days_ago * 24 * 60 * 60 * 1000);
 
   // Compute number of months in the selected window (used to normalize consistency)
-  // We add +1 to be inclusive of both endpoints' months; ensure at least 1 month.
   const monthsInWindow =
     Math.max(
       1,
       (prRefDate.getFullYear() - windowStartDate.getFullYear()) * 12 +
-      (prRefDate.getMonth() - windowStartDate.getMonth()) +
-      1
+      (prRefDate.getMonth() - windowStartDate.getMonth())
     );
 
   // 1) Fetch candidate list (all contributors excluding author)
@@ -165,21 +163,7 @@ async function turnoverRec_suggestion(
 
     // TurnoverRec with weights
     const turnoverRec = (C1_turn * learnRec) * (C2_turn * retentionRec);
-
-    console.log('days_ago: ', days_ago)
-    console.log('login: ', devMeta.login)
-    console.log('devCnt: ', devCnt)
-    console.log('projectTotalInWindow: ', projectTotalInWindow)
-    console.log('consistencyRatio_period: ', consistencyRatio_period)
-    console.log('monthsInWindow: ', monthsInWindow)
-    console.log('activeMonths: ', activeMonths)
-    console.log('contributionRatio_period: ', contributionRatio_period)
-    console.log('turnoverRec: ', turnoverRec)
-    console.log('learnRecScore: ', learnRec)
-    console.log('retentionRecScore: ', retentionRec)
-    console.log('knowledgeScore: ', knowledge)
-    console.log('----------')
-    
+  
     results.push({
       login: devMeta.login,
       canonical_name: devMeta.canonical_name,
