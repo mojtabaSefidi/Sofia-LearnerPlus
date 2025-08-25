@@ -791,31 +791,66 @@ async function insertResolvedContributors(resolvedContributors) {
     console.log(`   ... and ${contributorsToInsert.length - 10} more`);
   }
   
-  // Insert in batches
-  const batchSize = 50;
+  // Insert contributors one by one to handle duplicates gracefully
+  // since we don't have a unique constraint to rely on for upsert
   let totalInserted = 0;
+  let totalSkipped = 0;
   
-  for (let i = 0; i < contributorsToInsert.length; i += batchSize) {
-    const batch = contributorsToInsert.slice(i, i + batchSize).map(c => ({
-      github_login: c.github_login,
-      canonical_name: c.canonical_name,
-      email: c.email
-    }));
-    
-    const { error } = await supabase
-      .from('contributors')
-      .upsert(batch, { onConflict: 'github_login' });
-    
-    if (error) {
-      console.error('Error inserting contributors batch:', error);
+  for (const contributor of contributorsToInsert) {
+    try {
+      // First, check if contributor already exists
+      const { data: existingContributor, error: checkError } = await supabase
+        .from('contributors')
+        .select('id')
+        .eq('github_login', contributor.github_login)
+        .single();
+      
+      if (checkError && checkError.code !== 'PGRST116') {
+        // PGRST116 is "no rows returned" - that's expected for new contributors
+        throw checkError;
+      }
+      
+      if (existingContributor) {
+        // Contributor exists, update it
+        const { error: updateError } = await supabase
+          .from('contributors')
+          .update({
+            canonical_name: contributor.canonical_name,
+            email: contributor.email
+          })
+          .eq('github_login', contributor.github_login);
+        
+        if (updateError) {
+          throw updateError;
+        }
+        
+        totalSkipped++;
+        console.log(`🔄 Updated existing contributor: ${contributor.github_login}`);
+      } else {
+        // Contributor doesn't exist, insert it
+        const { error: insertError } = await supabase
+          .from('contributors')
+          .insert({
+            github_login: contributor.github_login,
+            canonical_name: contributor.canonical_name,
+            email: contributor.email
+          });
+        
+        if (insertError) {
+          throw insertError;
+        }
+        
+        totalInserted++;
+        console.log(`➕ Inserted new contributor: ${contributor.github_login}`);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Error processing contributor ${contributor.github_login}:`, error);
       throw error;
     }
-    
-    totalInserted += batch.length;
-    console.log(`📝 Inserted contributors batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(contributorsToInsert.length/batchSize)}`);
   }
   
-  console.log(`✅ Successfully inserted ${totalInserted} contributors with latest data`);
+  console.log(`✅ Successfully processed ${totalInserted + totalSkipped} contributors (${totalInserted} inserted, ${totalSkipped} updated/skipped)`);
 }
 
 function parseGitShowOutputWithLines(output) {
