@@ -610,6 +610,10 @@ async function processCommit(commit, contributorMap, fileMap, contributions) {
     // Combine the outputs
     const combinedOutput = numStat + '\n' + nameStatus;
     const files = parseGitShowOutputWithLines(combinedOutput);
+    // Add this call in processCommit after parsing files:
+    files.forEach(file => {
+      debugSpecificFile(file.file, commit.hash, 'FOUND_IN_COMMIT');
+    });
     
     console.log(`📁 Found ${files.length} files in commit ${commit.hash}`);
     
@@ -743,11 +747,6 @@ function debugSpecificFile(filename, commitHash, operation) {
     console.log(`🔍 DEBUG: ${operation} - ${filename} in commit ${commitHash}`);
   }
 }
-
-// Add this call in processCommit after parsing files:
-files.forEach(file => {
-  debugSpecificFile(file.file, commit.hash, 'FOUND_IN_COMMIT');
-});
 
 // Add this call in getOrCreateFile:
 async function getOrCreateFile(fileChange, fileMap) {
