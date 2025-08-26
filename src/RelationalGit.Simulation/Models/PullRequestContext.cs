@@ -31,27 +31,27 @@ namespace RelationalGit.Simulation
         private static PullRequestComparer _pullRequestComparer = new PullRequestComparer();
         private string[] _riskyFiles;
 
-        public DeveloperKnowledge[] ActualReviewers { get;   set; }
+        public DeveloperKnowledge[] ActualReviewers { get; set; }
 
-        public PullRequestFile[] PullRequestFiles { get;   set; }
+        public PullRequestFile[] PullRequestFiles { get; set; }
 
-        public PullRequest PullRequest { get;   set; }
+        public PullRequest PullRequest { get; set; }
 
-        public KnowledgeDistributionMap KnowledgeMap { get;   set; }
+        public KnowledgeDistributionMap KnowledgeMap { get; set; }
 
-        public Dictionary<string, string> CanononicalPathMapper { get;   set; }
+        public Dictionary<string, string> CanononicalPathMapper { get; set; }
 
         public Period PullRequestPeriod { get;   set; }
 
-        public ReadOnlyDictionary<string, Developer> Developers { get;   set; }
+        public ReadOnlyDictionary<string, Developer> Developers { get; set; }
 
-        public BlameSnapshot Blames { get;   set; }
+        public BlameSnapshot Blames { get; set; }
 
-        public DeveloperKnowledge[] PullRequestKnowledgeables { get;   set; }
+        public DeveloperKnowledge[] PullRequestKnowledgeables { get; set; }
 
-        public Dictionary<long, Period> Periods { get;   set; }
+        public Dictionary<long, Period> Periods { get; set; }
 
-        public HashSet<string> Hoarders { get;   set; } = null;
+        public HashSet<string> Hoarders { get; set; } = null;
 
         public Dictionary<string,List<string>> _fileOwners { get; set; } = null;
 
