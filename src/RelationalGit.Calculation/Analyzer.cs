@@ -19,7 +19,6 @@ namespace RelationalGit.Calculation
             if (!Directory.Exists(analyzeResultPath))
                 Directory.CreateDirectory(analyzeResultPath);
 
-            //testGetNumKnowledgeable();
             CalculateFaRReduction(actualSimulationId, recommenderSimulationIds, analyzeResultPath);
             CalculateExpertiseLoss(actualSimulationId, recommenderSimulationIds, analyzeResultPath);
             CalculateWorkload(actualSimulationId, recommenderSimulationIds, 10, analyzeResultPath);
@@ -314,7 +313,6 @@ namespace RelationalGit.Calculation
                         var actualWorkLoadPeriod = actualWorkload.GetValueOrDefault(periodId);
                         var files = dbContext.FileKnowledgeables.Where(q => q.HasReviewed && q.LossSimulationId == lossSimulation.Id
                         && q.TotalKnowledgeables == 1 && q.PeriodId == periodId).ToArray();
-
 
                         if (actualWorkLoadPeriod == null)
                             continue;
@@ -1102,3 +1100,4 @@ namespace RelationalGit.Calculation
         }
     }
 }
+

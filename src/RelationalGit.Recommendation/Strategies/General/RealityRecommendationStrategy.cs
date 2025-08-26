@@ -8,8 +8,7 @@ namespace RelationalGit.Recommendation
     {
         public RealityRecommendationStrategy(string knowledgeSaveReviewerReplacementType, ILogger logger, bool changePast, string simulationType)
             : base(knowledgeSaveReviewerReplacementType, logger, changePast, simulationType)
-        {
-        }
+        {}
 
         protected override Simulation.PullRequestRecommendationResult RecommendReviewers(PullRequestContext pullRequestContext)
         {

@@ -21,17 +21,17 @@ namespace RelationalGit.Data
 
         public DateTime EndDateTime { get; set; }
 
-        public double FilesAtRiksOwnershipThreshold { get;  set; }
+        public double FilesAtRiksOwnershipThreshold { get; set; }
 
-        public int FilesAtRiksOwnersThreshold { get;  set; }
+        public int FilesAtRiksOwnersThreshold { get; set; }
 
-        public int LeaversOfPeriodExtendedAbsence { get;  set; }
+        public int LeaversOfPeriodExtendedAbsence { get; set; }
 
-        public string KnowledgeSaveReviewerReplacementType { get;  set; }
+        public string KnowledgeSaveReviewerReplacementType { get; set; }
 
-        public int FirstPeriod { get;  set; }
+        public int FirstPeriod { get; set; }
 
-        public string SelectedReviewersType { get;  set; }
+        public string SelectedReviewersType { get; set; }
 
         public int? MinimumActualReviewersLength { get; set; }
 
@@ -43,10 +43,10 @@ namespace RelationalGit.Data
 
         public string LgtmTerms { get; set; }
 
-        public IEnumerable<string> MegaDevelopers { get;  set; }
+        public IEnumerable<string> MegaDevelopers { get; set; }
 
-        public string RecommenderOption { get;  set; }
+        public string RecommenderOption { get; set; }
 
-        public bool ChangePast { get;  set; }
+        public bool ChangePast { get; set; }
     }
 }
