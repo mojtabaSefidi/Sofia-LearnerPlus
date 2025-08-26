@@ -655,7 +655,7 @@ No developers found with prior experience on these files. Consider assigning rev
     // Condition 4: abandoned or >50% hoarded AND author first-touch on some files
     const learners = pickLearner(1);
     const experts = pickExpert(1);
-    comment += `**Risk summary:** Among the modified files in this PR, we see **${abandonedCount} abandoned** and **${hoardedCount} hoarded** file(s).\n\n`;
+    comment += `**Observation:** Among the modified files in this PR, we see **${abandonedCount} abandoned** and **${hoardedCount} hoarded** file(s).\n\n`;
     if (abandonedFiles.length > 0) {
       comment += `**Abandoned files:**\n${formatFileList(abandonedFiles)}\n\n`;
     }
@@ -663,9 +663,9 @@ No developers found with prior experience on these files. Consider assigning rev
       comment += `**Hoarded files:**\n${formatFileList(hoardedFiles)}\n\n`;
     }
     if (authorNoCxCount > 0) {
-      comment += `  Additionally, the PR author has **no prior experience** on these file(s):\n${formatFileList(authorNoCxFiles)}\n\n`;
+      comment += `Additionally, the PR author has **no prior experience** on these file(s):\n${formatFileList(authorNoCxFiles)}\n\n`;
     }
-    comment += `  **Recommendation:** Assign **two reviewers**:\n`;
+    comment += `**Recommendation:** Assign **two reviewers**:\n`;
     if (learners.length > 0) {
       comment += `  - A committed **learner** to distribute knowledge: ${learners.join(', ')}\n`;
     } else {
@@ -680,21 +680,21 @@ No developers found with prior experience on these files. Consider assigning rev
   } else if (hasCondition3) {
     // Condition 3: abandoned files exist OR more than 50% hoarded -> assign two learners
     const learners = pickLearner(2);
-    comment += `- **Risk summary:** Among the modified files in this PR, we see **${abandonedCount} abandoned** and **${hoardedCount} hoarded** file(s).\n\n`;
+    comment += `**Observation:** Among the modified files in this PR, we see **${abandonedCount} abandoned** and **${hoardedCount} hoarded** file(s).\n\n`;
     if (abandonedFiles.length > 0) {
       comment += `**Abandoned files:**\n${formatFileList(abandonedFiles)}\n\n`;
     }
     if (hoardedFiles.length > 0) {
       comment += `**Hoarded files:**\n${formatFileList(hoardedFiles)}\n\n`;
     }
-    comment += `  **Recommendation:** Assign **two learners** to distribute knowledge more broadly: ${learners.length > 0 ? learners.join(', ') : '_No suitable candidates found automatically_'}\n\n`;
+    comment += `**Recommendation:** Assign **two learners** to distribute knowledge more broadly: ${learners.length > 0 ? learners.join(', ') : '_No suitable candidates found automatically_'}\n\n`;
     // comment += `  *Rationale:* Abandoned files or majority-hoarded PRs indicate concentrated knowledge risk; two learners help spread knowledge and reduce turnover risk.\n\n`;
   } else if (hasCondition2) {
     // Condition 2: hoarded files exist and <=50% -> assign single learner
     const learner = pickLearner(1);
-    comment += `- **Risk summary:** There exist **${hoardedCount} hoarded** file(s) in this PR:\n\n`;
+    comment += `**Observation:** There exist **${hoardedCount} hoarded** file(s) in this PR:\n\n`;
     comment += `${formatFileList(hoardedFiles)}\n\n`;
-    comment += `  **Recommendation:** Assign a **learner** to distribute knowledge: ${learner.length > 0 ? learner[0] : '_No suitable candidate found automatically_'}\n\n`;
+    comment += `**Recommendation:** Assign a **learner** to distribute knowledge: ${learner.length > 0 ? learner[0] : '_No suitable candidate found automatically_'}\n\n`;
     // comment += `  *Rationale:* For small numbers of hoarded files, adding a learner helps spread knowledge without overstaffing the review.\n\n`;
   } else if (hasCondition1) {
     // Condition 1: author lacks experience on some files (CxFactor 0) but no abandoned/hoarded major issue
