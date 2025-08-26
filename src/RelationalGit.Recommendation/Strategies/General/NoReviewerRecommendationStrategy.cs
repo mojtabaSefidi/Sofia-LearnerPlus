@@ -6,8 +6,8 @@ namespace RelationalGit.Recommendation
 {
     public class NoReviewerRecommendationStrategy : RecommendationStrategy
     {
-        public NoReviewerRecommendationStrategy(string knowledgeSaveReviewerReplacementType, ILogger logger,bool changePast, string simulationType)
-            : base(knowledgeSaveReviewerReplacementType, logger,changePast, simulationType)
+        public NoReviewerRecommendationStrategy(string knowledgeSaveReviewerReplacementType, ILogger logger, bool changePast, string simulationType)
+            : base(knowledgeSaveReviewerReplacementType, logger, changePast, simulationType)
         {
         }
 
