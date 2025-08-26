@@ -35,10 +35,10 @@ namespace RelationalGit.Recommendation
         private (double Alpha, double Beta, int RiskOwenershipThreshold, double HoarderRatio) GetParameters(string recommenderOption)
         {
             if (string.IsNullOrEmpty(recommenderOption))
-                return (0.5, 1,3,0.7);
+                return (0.5, 1, 3, 0.7);
 
             var options = recommenderOption.Split(',');
-            var alphaOption = options.FirstOrDefault(q => q.StartsWith("alpha")).Substring("alpha".Length+1);
+            var alphaOption = options.FirstOrDefault(q => q.StartsWith("alpha")).Substring("alpha".Length + 1);
             var betaOption = options.FirstOrDefault(q => q.StartsWith("beta")).Substring("beta".Length + 1);
             var riskOwenershipThreshold = options.FirstOrDefault(q => q.StartsWith("risk")).Substring("risk".Length + 1);
             var hoarderRatioOption = options.FirstOrDefault(q => q.StartsWith("hoarder_ratio")).Substring("hoarder_ratio".Length + 1);
@@ -49,13 +49,9 @@ namespace RelationalGit.Recommendation
         internal override double ComputeReviewerScore(PullRequestContext pullRequestContext, DeveloperKnowledge reviewer)
         {
             double spreadingScore = GetPersistSpreadingScore(pullRequestContext, reviewer, _pullRequestReviewerSelectionStrategy);
-
             var expertiseScore = ComputeBirdReviewerScore(pullRequestContext, reviewer);
-
             var alpha = pullRequestContext.GetRiskyFiles(_riskOwenershipThreshold).Length > 0 ? 1 : 0;
-
             var score = (1 - alpha) * expertiseScore + alpha * spreadingScore;
-
             return score;
         }
 
