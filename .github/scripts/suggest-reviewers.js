@@ -628,7 +628,7 @@ No developers found with prior experience on these files. Consider assigning rev
   const hoardedFraction = hoardedCount / totalFiles;
 
   comment += `\n---
-*### 🔍 Suggestions:\n\n`;
+ ### 🔍 Suggestions:\n\n`;
 
   // Helper to format file lists
   function formatFileList(list) {
@@ -699,15 +699,15 @@ No developers found with prior experience on these files. Consider assigning rev
   } else if (hasCondition1) {
     // Condition 1: author lacks experience on some files (CxFactor 0) but no abandoned/hoarded major issue
     const expert = pickExpert(1);
-    comment += `- **Observation:** The author has **no prior experience** on these file(s):\n\n`;
+    comment += `**Observation:** The author has **no prior experience** on these file(s):\n\n`;
     comment += `${formatFileList(authorNoCxFiles)}\n\n`;
-    comment += `  **Recommendation:** Assign an **expert reviewer** to reduce defect risk: ${expert.length > 0 ? expert[0] : '_No suitable expert found automatically_'}\n\n`;
+    comment += `**Recommendation:** Assign an **expert reviewer** to reduce defect risk: ${expert.length > 0 ? expert[0] : '_No suitable expert found automatically_'}\n\n`;
     // comment += `  *Rationale:* First-time edits to files increase defect risk; an expert reviewer can mitigate this.\n\n`;
   } else {
-    comment += `- No immediate knowledge-risk conditions detected (no abandoned files, no hoarded files, and the author has prior experience on files). Continue with normal review.\n\n`;
+    comment += `- No immediate knowledge-risk conditions detected (no abandoned files, no hoarded files, and the author has prior experience with files). Continue with normal review.\n\n`;
   }
 
-  // Final note / guidance
+  // Final note/guidance
   // comment += `**Note:** Candidate picks were chosen automatically by sorting candidate metrics (expert: highest CxFactor; learner: highest Knowledge Distribution / TurnoverRec score). If workload, availability, or other contextual constraints apply, adjust reviewers accordingly.\n`;
 
   return comment;
