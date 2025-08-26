@@ -43,7 +43,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Run database setup if needed
-          echo "Database schema should be set up manually in Supabase dashboard"
+          echo "Database schema should be set up manually in the Supabase dashboard"
           echo "Run the SQL script from .github/scripts/db-setup.sql in your Supabase SQL editor"
           
       - name: Initialize Repository Analysis
