@@ -12,7 +12,7 @@ namespace RelationalGit.Simulation
 
         protected string SimulationType { get; private set; }
 
-        public RecommendationStrategy(string knowledgeSaveReviewerReplacementType, ILogger logger,bool changePast, string simulationType)
+        public RecommendationStrategy(string knowledgeSaveReviewerReplacementType, ILogger logger, bool changePast, string simulationType)
         {
             ReviewerReplacementStrategyType = knowledgeSaveReviewerReplacementType;
             ChangePast = changePast;
