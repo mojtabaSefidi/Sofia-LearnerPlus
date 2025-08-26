@@ -164,7 +164,7 @@ namespace RelationalGit.Recommendation
 
 
                             var actualRecommendationResults = dbContext.PullRequestRecommendationResults.Where(q => q.LossSimulationId == cHRevId && q.ActualReviewersLength > 0)
-                                .Select(q => new { q.SelectedReviewers, q.ActualReviewers, q.SortedCandidates, q.PullRequestNumber });
+                                .Select(q => new { q.SelectedReviewers, q.ActualReviewers, q.SortedCandidates, q.PullRequestNumber});
 
                             int[] indexArray = new int[1];
                             indexArray[0] = -1;
@@ -193,14 +193,12 @@ namespace RelationalGit.Recommendation
                                     {
                                         var TopCandidate = SortedCandidates.Split(", ").ToArray().FirstOrDefault();
                                         indexArray[0] = Array.IndexOf(actualList, TopCandidate.ToString());
-
                                     }
                                     
                                     else if (SortedCandidates == null && availableDevs.Length > 0)
                                     {
                                         indexArray[0] = _rnd.Next(0, actualReviewersCombination.Count());
                                     }
-                                    
                                 }
                             }
                             else
@@ -312,7 +310,6 @@ namespace RelationalGit.Recommendation
                 {
                     selectedCandidates.Add(selectedCandidate);
                 }
-
                 index++;
             }
 
