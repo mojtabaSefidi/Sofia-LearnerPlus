@@ -499,7 +499,7 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
   // --- Build Pull Request Analysis section (deferred to breakdown) ---
   let prAnalysisSection = `
 
-### 👤 Author Knowledge: ${prAuthor}
+### 👤 Author Knowledge: \`${prAuthor}\`
 
 | ChangedFile | Change Type | #Knowledgable   | Change Size |  #Commit  | Last Commit Date | #Review   | Last Review Date | Author Level of Expertise |
 |-------------|-------------|-----------------|-------------|-----------|------------------|-----------|------------------|---------------------------|
@@ -562,7 +562,7 @@ No developers found with prior experience on these files. Consider assigning rev
       typeof num === 'number' && !isNaN(num) ? num.toFixed(decimals) : '0.0';
 
     reviewerMetrics.forEach(metrics => {
-      candidateRecordsSection += `| ${metrics.login} | ${metrics.knows} | ${metrics.learns} | ${timeAgo(metrics.lastCommitDate)} | ${timeAgo(metrics.lastModificationInPRFiles)} | ${metrics.lCommits} | ${metrics.gCommits} | ${metrics.lReviews} | ${metrics.gReviews} | ${metrics.aMonths} | ${formatNumber(metrics.workloadShare)} | ${formatNumber(metrics.percentileRank)} | ${formatNumber(metrics.relativeToMean)} | ${formatNumber(metrics.giniWorkload)} | ${formatNumber(metrics.avgReviewTimeHours)} | ${Math.round(metrics.avgReviewSizeLines)} | ${formatNumber(metrics.linesPerHour)} |\n`;
+      candidateRecordsSection += `| \`${metrics.login}\` | ${metrics.knows} | ${metrics.learns} | ${timeAgo(metrics.lastCommitDate)} | ${timeAgo(metrics.lastModificationInPRFiles)} | ${metrics.lCommits} | ${metrics.gCommits} | ${metrics.lReviews} | ${metrics.gReviews} | ${metrics.aMonths} | ${formatNumber(metrics.workloadShare)} | ${formatNumber(metrics.percentileRank)} | ${formatNumber(metrics.relativeToMean)} | ${formatNumber(metrics.giniWorkload)} | ${formatNumber(metrics.avgReviewTimeHours)} | ${Math.round(metrics.avgReviewSizeLines)} | ${formatNumber(metrics.linesPerHour)} |\n`;
     });
 
     candidateRecordsSection += `\n**Columns Description:**
@@ -624,11 +624,11 @@ No developers found with prior experience on these files. Consider assigning rev
 `;
 
     RecommendationScores.forEach(metrics => {
-      candidateScoreSection += `| ${metrics.login} | ${(metrics.cxFactorScore || 0).toFixed(3)} | ${(metrics.turnoverRecScore || 0).toFixed(3)} |\n`;
+      candidateScoreSection += `| \`${metrics.login}\` | ${(metrics.cxFactorScore || 0).toFixed(3)} | ${(metrics.turnoverRecScore || 0).toFixed(3)} |\n`;
     });
 
     // Add the requested extra row (Top Candidate, user with highest expertise, user with highest knowledge distribution)
-    candidateScoreSection += `| **Top Candidate** | ${topExpert} | ${topKD} |\n`;
+    candidateScoreSection += `| Top Candidate | \`${topExpert}\` | \`${topKD}\` |\n`;
   } else {
     candidateScoreSection += `### 📝 Candidate Reviewers Score
 
@@ -682,12 +682,13 @@ _No candidate metrics available for this PR._\n`;
     }
     suggestionsSection += `**Recommendation:** Assign **two reviewers**:\n`;
     if (learners.length > 0) {
-      suggestionsSection += `  - A committed **learner** to distribute knowledge: ${learners.join(', ')}\n`;
+      suggestionsSection += `  - A committed **learner** to distribute knowledge: ${learners.length > 0 ? learners.map(l => `\`${l}\``).join(', ') : '_No suitable learner candidate found automatically_'}\n`;
+
     } else {
       suggestionsSection += `  - No suitable learner candidate found automatically — please assign a learner manually.\n`;
     }
     if (experts.length > 0) {
-      suggestionsSection += `  - An **expert reviewer** to ensure safety: ${experts.join(', ')}\n`;
+      suggestionsSection += `  - An **expert reviewer** to ensure safety: ${experts.length > 0 ? experts.map(e => `\`${e}\``).join(', ') : '_No suitable expert found automatically_'}\n`;
     } else {
       suggestionsSection += `  - No suitable expert candidate found automatically — please assign an expert manually.\n`;
     }
@@ -701,23 +702,23 @@ _No candidate metrics available for this PR._\n`;
     if (hoardedFiles.length > 0) {
       suggestionsSection += `**Hoarded files:**\n${formatFileList(hoardedFiles)}\n\n`;
     }
-    suggestionsSection += `**Recommendation:** Assign **two learners** to distribute knowledge more broadly: ${learners.length > 0 ? learners.join(', ') : '_No suitable candidates found automatically_'}\n\n`;
+suggestionsSection += `**Recommendation:** Assign **two learners** to distribute knowledge more broadly: ${learners.length > 0 ? learners.map(l => `\`${l}\``).join(', ') : '_No suitable candidates found automatically_'}\n\n`;
   } else if (hasCondition2) {
     // Condition 2: hoarded files exist and <=50% -> assign single learner
     const learner = pickLearner(1);
     suggestionsSection += `**Observation:** There exist **${hoardedCount} hoarded** file(s) in this PR:\n\n`;
     suggestionsSection += `${formatFileList(hoardedFiles)}\n\n`;
-    suggestionsSection += `**Recommendation:** Assign a **learner** to distribute knowledge: ${learner.length > 0 ? learner[0] : '_No suitable candidate found automatically_'}\n\n`;
+    suggestionsSection += `**Recommendation:** Assign a **learner** to distribute knowledge: ${learner.length > 0 ? `\`${learner[0]}\`` : '_No suitable candidate found automatically_'}\n\n`;
   } else if (hasCondition1) {
     // Condition 1: author lacks experience on some files (CxFactor 0), but no abandoned/hoarded major issue
     const expert = pickExpert(1);
     suggestionsSection += `**Observation:** The author has **no prior experience** on these file(s):\n\n`;
     suggestionsSection += `${formatFileList(authorNoCxFiles)}\n\n`;
-    suggestionsSection += `**Recommendation:** Assign an **expert reviewer** to reduce defect risk: ${expert.length > 0 ? expert[0] : '_No suitable expert found automatically_'}\n\n`;
+    suggestionsSection += `**Recommendation:** Assign an **expert reviewer** to reduce defect risk: ${expert.length > 0 ? `\`${expert[0]}\`` : '_No suitable expert found automatically_'}\n\n`;
   } else {
     const learner = pickLearner(1);
     suggestionsSection += `**Observation:** The author has adequate knowledge about the modified codes, and the risk of defects and knowledge loss is low:\n\n`;
-    suggestionsSection += `**Recommendation:** Assign a **learner** to distribute knowledge more boadly among the developement team: ${learner.length > 0 ? learner[0] : '_No suitable candidate found automatically_'}\n\n`;  }
+    suggestionsSection += `**Recommendation:** Assign a **learner** to distribute knowledge more broadly among the development team: ${learner.length > 0 ? `\`${learner[0]}\`` : '_No suitable candidate found automatically_'}\n\n`;
 
   // --- Assemble final comment: Candidate Score -> Suggestions -> Breakdown (collapsible with PR Analysis & Candidate Records) ---
   let comment = '';
@@ -729,10 +730,10 @@ _No candidate metrics available for this PR._\n`;
   comment += suggestionsSection;
 
   // Polished sentence before breakdown
-  comment += `\n You can view detailed additional information about the candidate reviewers by clicking on the title of the section below.\n\n`;
+  comment += `\n--- You can view detailed additional information about the candidate reviewers by clicking on the title of the section below.\n\n`;
 
   // Breakout (collapsible) containing the PR analysis and candidate records
-  comment += `<details>\n<summary><h3>📊 Pull Request Detailed Analysis</h3></summary>\n\n`;
+  comment += `<details>\n<summary><h3>📊 Pull Request Detailed Analysis:</h3></summary>\n\n`;
   comment += prAnalysisSection;
   comment += candidateRecordsSection;
   comment += `\n</details>\n`;
