@@ -730,7 +730,7 @@ suggestionsSection += `**Recommendation:** Assign **two learners** to distribute
   comment += suggestionsSection;
 
   // Polished sentence before breakdown
-  comment += `\n--- You can view detailed additional information about the candidate reviewers by clicking on the title of the section below.\n\n`;
+  comment += `\n---\nYou can view detailed additional information about the candidate reviewers by clicking on the title of the section below.\n\n`;
 
   // Breakout (collapsible) containing the PR analysis and candidate records
   comment += `<details>\n<summary><h3>📊 Pull Request Detailed Analysis:</h3></summary>\n\n`;
