@@ -717,7 +717,7 @@ suggestionsSection += `**Recommendation:** Assign **two learners** to distribute
     suggestionsSection += `**Recommendation:** Assign an **expert reviewer** to reduce defect risk: ${expert.length > 0 ? `\`${expert[0]}\`` : '_No suitable expert found automatically_'}\n\n`;
   } else {
     const learner = pickLearner(1);
-    suggestionsSection += `**Observation:** The author has adequate knowledge about the modified codes, and the risk of defects and knowledge loss is low:\n\n`;
+    suggestionsSection += `**Observation:** The author has adequate knowledge about the modified codes, so the risk of defects and knowledge loss is low.\n\n`;
     suggestionsSection += `**Recommendation:** Assign a **learner** to distribute knowledge more broadly among the development team: ${learner.length > 0 ? `\`${learner[0]}\`` : '_No suitable candidate found automatically_'}\n\n`;
   }
   // --- Assemble final comment: Candidate Score -> Suggestions -> Breakdown (collapsible with PR Analysis & Candidate Records) ---
