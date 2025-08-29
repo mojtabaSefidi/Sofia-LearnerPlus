@@ -374,7 +374,7 @@ namespace RelationalGit.Simulation
         private void AddProposedChangesToPrSubmitterKnowledge(PullRequest pullRequest)
         {
             // we assume the PR submitter is the dev who has modified the files
-            // however it's not the case always. for example https://github.com/dotnet/coreclr/pull/1
+            // however, it's not always the case. For example, https://github.com/dotnet/coreclr/pull/1
             // we assume all the proposed file changes are committed and owned by the main pull request's author
             // which may not be correct in rare scenarios
 
@@ -400,7 +400,7 @@ namespace RelationalGit.Simulation
             foreach (var file in pullRequestFiles)
             {
                 var canonicalPath = CanononicalPathMapper.GetValueOrDefault(file.FileName);
-                AssignKnowledgeToDeveloper(new Commit { NormalizedAuthorName= prSubmitter ,PeriodId=period.Id,Sha=pullRequest.MergeCommitSha,AuthorDateTime=pullRequest.MergedAtDateTime.Value}, file.ChangeKind, prSubmitter, period, canonicalPath);
+                AssignKnowledgeToDeveloper(new Commit { NormalizedAuthorName=prSubmitter, PeriodId=period.Id, Sha=pullRequest.MergeCommitSha, AuthorDateTime=pullRequest.MergedAtDateTime.Value}, file.ChangeKind, prSubmitter, period, canonicalPath);
             }
         }
 
@@ -473,7 +473,7 @@ namespace RelationalGit.Simulation
 
             for (var i = 0; i < pullRequestFiles.Length; i++)
             {
-                // we remove this file, if there it is not recorded in the committedchanges dataset
+                // we remove this file if it is not recorded in the committed changes dataset
                 if (!CanononicalPathMapper.ContainsKey(pullRequestFiles[i].FileName))
                     continue;
 
