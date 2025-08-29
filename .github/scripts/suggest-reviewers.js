@@ -715,8 +715,9 @@ _No candidate metrics available for this PR._\n`;
     suggestionsSection += `${formatFileList(authorNoCxFiles)}\n\n`;
     suggestionsSection += `**Recommendation:** Assign an **expert reviewer** to reduce defect risk: ${expert.length > 0 ? expert[0] : '_No suitable expert found automatically_'}\n\n`;
   } else {
-    suggestionsSection += `- No immediate knowledge-risk conditions detected (no abandoned files, no hoarded files, and the author has prior experience with files). Continue with normal review.\n\n`;
-  }
+    const learner = pickLearner(1);
+    suggestionsSection += `**Observation:** The author has adequate knowledge about the modified codes, and the risk of defects and knowledge loss is low:\n\n`;
+    suggestionsSection += `**Recommendation:** Assign a **learner** to distribute knowledge more boadly among the developement team: ${learner.length > 0 ? learner[0] : '_No suitable candidate found automatically_'}\n\n`;  }
 
   // --- Assemble final comment: Candidate Score -> Suggestions -> Breakdown (collapsible with PR Analysis & Candidate Records) ---
   let comment = '';
@@ -731,7 +732,7 @@ _No candidate metrics available for this PR._\n`;
   comment += `\n You can view detailed additional information about the candidate reviewers by clicking on the title of the section below.\n\n`;
 
   // Breakout (collapsible) containing the PR analysis and candidate records
-  comment += `<details>\n<summary> ## 📊 Pull Request Detailed Analysis </summary>\n\n`;
+  comment += `<details>\n<summary> 📊 **Pull Request Detailed Analysis** </summary>\n\n`;
   comment += prAnalysisSection;
   comment += candidateRecordsSection;
   comment += `\n</details>\n`;
