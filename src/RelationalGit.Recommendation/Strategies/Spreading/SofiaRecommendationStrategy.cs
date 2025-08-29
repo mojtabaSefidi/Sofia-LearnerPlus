@@ -16,10 +16,13 @@ namespace RelationalGit.Recommendation
         string _pullRequestReviewerSelectionStrategy;
 
         public SofiaRecommendationStrategy(string knowledgeSaveReviewerReplacementType, 
-            ILogger logger, int? numberOfPeriodsForCalculatingProbabilityOfStay, 
+            ILogger logger,
+            int? numberOfPeriodsForCalculatingProbabilityOfStay, 
             string pullRequestReviewerSelectionStrategy,
             bool? addOnlyToUnsafePullrequests,
-            string recommenderOption, bool changePast, string simulationType)
+            string recommenderOption,
+            bool changePast,
+            string simulationType)
             : base(knowledgeSaveReviewerReplacementType, logger, pullRequestReviewerSelectionStrategy, addOnlyToUnsafePullrequests, recommenderOption, changePast, simulationType)
         {
             _numberOfPeriodsForCalculatingProbabilityOfStay = numberOfPeriodsForCalculatingProbabilityOfStay;
