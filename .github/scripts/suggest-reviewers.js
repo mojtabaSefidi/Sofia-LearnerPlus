@@ -497,7 +497,7 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
   const filePaths = prFiles.map(f => f.filename);
 
   // --- Build Pull Request Analysis section (deferred to breakdown) ---
-  let prAnalysisSection = `## 📊 Pull Request Analysis
+  let prAnalysisSection = `
 
 ### 👤 Author Knowledge: ${prAuthor}
 
@@ -728,10 +728,10 @@ _No candidate metrics available for this PR._\n`;
   comment += suggestionsSection;
 
   // Polished sentence before breakdown
-  comment += `\n You can view detailed additional information about the candidate reviewers section below.\n\n`;
+  comment += `\n You can view detailed additional information about the candidate reviewers by clicking on the title of the section below.\n\n`;
 
   // Breakout (collapsible) containing the PR analysis and candidate records
-  comment += `<details>\n<summary>📂 Pull Request Analysis & Developers Record </summary>\n\n`;
+  comment += `<details>\n<summary> ## 📊 Pull Request Detailed Analysis </summary>\n\n`;
   comment += prAnalysisSection;
   comment += candidateRecordsSection;
   comment += `\n</details>\n`;
