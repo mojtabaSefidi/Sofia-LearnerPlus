@@ -719,7 +719,7 @@ suggestionsSection += `**Recommendation:** Assign **two learners** to distribute
     const learner = pickLearner(1);
     suggestionsSection += `**Observation:** The author has adequate knowledge about the modified codes, and the risk of defects and knowledge loss is low:\n\n`;
     suggestionsSection += `**Recommendation:** Assign a **learner** to distribute knowledge more broadly among the development team: ${learner.length > 0 ? `\`${learner[0]}\`` : '_No suitable candidate found automatically_'}\n\n`;
-
+  }
   // --- Assemble final comment: Candidate Score -> Suggestions -> Breakdown (collapsible with PR Analysis & Candidate Records) ---
   let comment = '';
 
