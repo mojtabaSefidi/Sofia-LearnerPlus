@@ -499,7 +499,7 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
   // --- Build Pull Request Analysis section (deferred to breakdown) ---
   let prAnalysisSection = `
 
-### 👤 Author Knowledge: \`${prAuthor}\`
+#### 👤 Author Knowledge: \`${prAuthor}\`
 
 | ChangedFile | Change Type | #Knowledgable   | Change Size |  #Commit  | Last Commit Date | #Review   | Last Review Date | Author Level of Expertise |
 |-------------|-------------|-----------------|-------------|-----------|------------------|-----------|------------------|---------------------------|
@@ -552,7 +552,7 @@ No developers found with prior experience on these files. Consider assigning rev
 - Subject matter expertise
 `;
   } else {
-    candidateRecordsSection += `\n### 👀 Candidate Reviewers Records
+    candidateRecordsSection += `\n#### 👀 Candidate Reviewers Records
 
 | Developer | Knows | Learns | Last Commit | Last Modification On PR Files | PR Commits | Last Year Commits | PR Reviews | Last Year Reviews | Active-Months | Workload Share | Percentile Rank | Relative To Mean | ΔGiniWorkload(Absolute) | AvgTime(h) | AvgSize(line) | line/hour |
 |-----------|-------|--------|-------------|-------------------------------|------------|-------------------|------------|-------------------|---------------|----------------|-----------------|------------------|-------------------------|------------|---------------|-----------|
