@@ -148,38 +148,9 @@ async function whoDo_suggestion(
     }
 
     
-    // Phase C: Per-file and per-directory activity counts & recency
+    // Phase C: Per-file and per-directory activity counts & recency - CORRECTED VERSION
     console.log('Phase C: Computing activity counts and recency...');
     
-    // Fetch all contributions for scoring (no date restrictions for historical data)
-    const { data: allContributions, error: contribHistErr } = await supabase
-      .from('contributions')
-      .select('contributor_id, file_id, activity_type, contribution_date')
-      .in('activity_type', ['commit', 'review'])
-      .lt('contribution_date', prRefDate.toISOString()); // Only consider contributions before PR
-
-    if (contribHistErr) {
-      console.error('Error fetching all contributions:', contribHistErr);
-      throw contribHistErr;
-    }
-
-    // Organize contributions by contributor and file/activity type
-    const contribByDevFileActivity = new Map(); // "devId_fileId_activityType" -> contributions[]
-    
-    for (const contrib of allContributions || []) {
-      const key = `${contrib.contributor_id}_${contrib.file_id}_${contrib.activity_type}`;
-      if (!contribByDevFileActivity.has(key)) {
-        contribByDevFileActivity.set(key, []);
-      }
-      contribByDevFileActivity.get(key).push(contrib);
-    }
-
-    // Helper function to calculate days difference
-    const daysDiff = (date1, date2) => {
-      const diffTime = Math.abs(date1.getTime() - date2.getTime());
-      return Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-    };
-
     // Calculate scores for each candidate
     const candidateScores = new Map();
     
@@ -188,10 +159,11 @@ async function whoDo_suggestion(
       let sumFileReviews = 0;
       let sumDirCommits = 0;
       let sumDirReviews = 0;
-
-      // File-level calculations
+    
+      // File-level calculations (Term 1 and 3 of WhoDo formula)
+      // For each file f in F: add n_change(D,f) / t_change(D,f) to sum
       for (const fileId of F_fileids) {
-        // File commits
+        // File commits: n_change(D,f) / t_change(D,f)
         const commitKey = `${devId}_${fileId}_commit`;
         const commits = contribByDevFileActivity.get(commitKey) || [];
         const nChangeFile = commits.length;
@@ -199,11 +171,11 @@ async function whoDo_suggestion(
         if (nChangeFile > 0) {
           const lastChangeDate = new Date(Math.max(...commits.map(c => new Date(c.contribution_date).getTime())));
           const tChangeFile = daysDiff(prRefDate, lastChangeDate);
-          // Avoid division by zero: tChangeFile is guaranteed >= 1 by daysDiff function
           sumFileCommits += nChangeFile / tChangeFile;
         }
-
-        // File reviews
+        // If no commits for this file, contributes 0 to the sum
+    
+        // File reviews: n_review(D,f) / t_review(D,f)
         const reviewKey = `${devId}_${fileId}_review`;
         const reviews = contribByDevFileActivity.get(reviewKey) || [];
         const nReviewFile = reviews.length;
@@ -211,18 +183,21 @@ async function whoDo_suggestion(
         if (nReviewFile > 0) {
           const lastReviewDate = new Date(Math.max(...reviews.map(r => new Date(r.contribution_date).getTime())));
           const tReviewFile = daysDiff(prRefDate, lastReviewDate);
-          // Avoid division by zero: tReviewFile is guaranteed >= 1 by daysDiff function
           sumFileReviews += nReviewFile / tReviewFile;
         }
+        // If no reviews for this file, contributes 0 to the sum
       }
-
-      // Directory-level calculations
+    
+      // Directory-level calculations (Term 2 and 4 of WhoDo formula)
+      // For each directory p in P: add n_change(D,p) / t_change(D,p) to sum
       for (const parentDir of P_dirs) {
         const filesInDir = fileIdsInDirs.get(parentDir) || new Set();
         
-        // Directory commits
+        // Directory commits: n_change(D,p) / t_change(D,p)
+        // n_change(D,p) = total commits by D across all files in directory p
+        // t_change(D,p) = days since D's most recent commit in directory p
         let nChangeDir = 0;
-        let lastChangeDirDate = null;
+        let mostRecentCommitDate = null;
         
         for (const fileId of filesInDir) {
           const commitKey = `${devId}_${fileId}_commit`;
@@ -230,22 +205,25 @@ async function whoDo_suggestion(
           nChangeDir += commits.length;
           
           if (commits.length > 0) {
-            const fileLastChange = new Date(Math.max(...commits.map(c => new Date(c.contribution_date).getTime())));
-            if (!lastChangeDirDate || fileLastChange > lastChangeDirDate) {
-              lastChangeDirDate = fileLastChange;
+            const fileLastCommit = new Date(Math.max(...commits.map(c => new Date(c.contribution_date).getTime())));
+            if (!mostRecentCommitDate || fileLastCommit > mostRecentCommitDate) {
+              mostRecentCommitDate = fileLastCommit;
             }
           }
         }
         
-        if (nChangeDir > 0 && lastChangeDirDate) {
-          const tChangeDir = daysDiff(prRefDate, lastChangeDirDate);
-          // Avoid division by zero: tChangeDir is guaranteed >= 1 by daysDiff function
+        // Only add to sum if developer has commits in this directory
+        if (nChangeDir > 0 && mostRecentCommitDate) {
+          const tChangeDir = daysDiff(prRefDate, mostRecentCommitDate);
           sumDirCommits += nChangeDir / tChangeDir;
         }
-
-        // Directory reviews
+        // If no commits in this directory, contributes 0 to the sum
+    
+        // Directory reviews: n_review(D,p) / t_review(D,p)
+        // n_review(D,p) = total reviews by D across all files in directory p
+        // t_review(D,p) = days since D's most recent review in directory p
         let nReviewDir = 0;
-        let lastReviewDirDate = null;
+        let mostRecentReviewDate = null;
         
         for (const fileId of filesInDir) {
           const reviewKey = `${devId}_${fileId}_review`;
@@ -254,17 +232,18 @@ async function whoDo_suggestion(
           
           if (reviews.length > 0) {
             const fileLastReview = new Date(Math.max(...reviews.map(r => new Date(r.contribution_date).getTime())));
-            if (!lastReviewDirDate || fileLastReview > lastReviewDirDate) {
-              lastReviewDirDate = fileLastReview;
+            if (!mostRecentReviewDate || fileLastReview > mostRecentReviewDate) {
+              mostRecentReviewDate = fileLastReview;
             }
           }
         }
         
-        if (nReviewDir > 0 && lastReviewDirDate) {
-          const tReviewDir = daysDiff(prRefDate, lastReviewDirDate);
-          // Avoid division by zero: tReviewDir is guaranteed >= 1 by daysDiff function
+        // Only add to sum if developer has reviews in this directory
+        if (nReviewDir > 0 && mostRecentReviewDate) {
+          const tReviewDir = daysDiff(prRefDate, mostRecentReviewDate);
           sumDirReviews += nReviewDir / tReviewDir;
         }
+        // If no reviews in this directory, contributes 0 to the sum
       }
       
       // Phase D: Compute Score(D) using WhoDo formula
@@ -279,13 +258,28 @@ async function whoDo_suggestion(
         sumDirReviews
       });
     }
-
-
+    
     console.log('✅ Phase C complete');
     console.log('  Contributions grouped:', contribByDevFileActivity.size);
-    for (const [devId, meta] of candidatesMap) {
+    
+    // Enhanced debugging - show sample contributions
+    console.log('  Sample contribution keys:', Array.from(contribByDevFileActivity.keys()).slice(0, 10));
+    
+    for (const [devId, meta] of Array.from(candidatesMap.entries()).slice(0, 5)) {
       const scoreObj = candidateScores.get(devId);
-      console.log(`  Dev: ${meta.login}, FileCommits=${scoreObj?.sumFileCommits.toFixed(2)}, DirCommits=${scoreObj?.sumDirCommits.toFixed(2)}, FileReviews=${scoreObj?.sumFileReviews.toFixed(2)}, DirReviews=${scoreObj?.sumDirReviews.toFixed(2)}, RawScore=${scoreObj?.score.toFixed(2)}`);
+      console.log(`  Dev: ${meta.login} (ID: ${devId})`);
+      console.log(`    FileCommits=${scoreObj?.sumFileCommits.toFixed(4)}, DirCommits=${scoreObj?.sumDirCommits.toFixed(4)}`);
+      console.log(`    FileReviews=${scoreObj?.sumFileReviews.toFixed(4)}, DirReviews=${scoreObj?.sumDirReviews.toFixed(4)}`);
+      console.log(`    RawScore=${scoreObj?.score.toFixed(4)}`);
+      
+      // Debug specific file contributions for this developer
+      for (const fileId of Array.from(F_fileids).slice(0, 2)) {
+        const commitKey = `${devId}_${fileId}_commit`;
+        const reviewKey = `${devId}_${fileId}_review`;
+        const commits = contribByDevFileActivity.get(commitKey)?.length || 0;
+        const reviews = contribByDevFileActivity.get(reviewKey)?.length || 0;
+        console.log(`    File ${fileId}: ${commits} commits, ${reviews} reviews`);
+      }
     }
     
     // Phase E: Compute Load(D)
