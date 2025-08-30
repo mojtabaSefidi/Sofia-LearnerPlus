@@ -141,7 +141,7 @@ async function suggestReviewers() {
       });
     }
 
-    / Get WhoDo Suggestion
+    // Get WhoDo Suggestion
     let whoDoResults = [];
     try {
       whoDoResults = await whoDo_suggestion(
