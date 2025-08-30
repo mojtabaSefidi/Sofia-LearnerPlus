@@ -1,6 +1,7 @@
 // .github/scripts/suggest-reviewers.js
 const { achrev_suggestion } = require('./recommenders/AcHRev');
 const { turnoverRec_suggestion } = require('./recommenders/TurnoverRec');
+const { whoDo_suggestion } = require('./recommenders/WhoDo');
 
 const { 
   calculateWorkloadAnalytics, 
@@ -140,11 +141,45 @@ async function suggestReviewers() {
       });
     }
 
+    / Get WhoDo Suggestion
+    let whoDoResults = [];
+    try {
+      whoDoResults = await whoDo_suggestion(
+        pr.user.login,   // prAuthor
+        prFiles,         // prFiles
+        pr.created_at,   // prCreatedAt
+        pr.closed_at,    // prClosedAt
+        pr.number,       // prNumber
+        200,             // topN
+        1.0,             // C1
+        1.0,             // C2
+        1.0,             // C3
+        1.0,             // C4
+        0.5              // theta
+      );
+    } catch (err) {
+      console.error('⚠️ whoDo_suggestion failed or errored:', err);
+      whoDoResults = [];
+    }
+    
+    // Build WhoDo lookup map
+    const whoDoByLoginMap = new Map();
+    if (Array.isArray(whoDoResults)) {
+      whoDoResults.forEach(r => {
+        whoDoByLoginMap.set(r.login, {
+          whoDoScore: r.whoDoScore || 0,
+          rawScore: r.rawScore || 0,
+          load: r.load || 0,
+          totalOpenReviews: r.totalOpenReviews || 0
+        });
+      });
+    }
+
     // Analyze files in detail — pass achrevPerFileMap so analyzeFiles can set per-file author CxFactor
     const fileAnalysis = await analyzeFiles(prFiles, pr.user.login, pr.created_at, achrevPerFileMap);
     
     // Calculate detailed reviewer metrics — pass achrevByLoginMap so we don't re-run achrev inside it
-    const reviewerMetrics = await calculateDetailedReviewerMetrics(prFiles, pr.user.login, achrevByLoginMap, turnoverRecByLoginMap);
+    const reviewerMetrics = await calculateDetailedReviewerMetrics(prFiles, pr.user.login, achrevByLoginMap, turnoverRecByLoginMap, whoDoByLoginMap);
     
     // Generate comprehensive comment
     const comment = generateDetailedComment(fileAnalysis, reviewerMetrics, pr.user.login, prFiles);
@@ -291,7 +326,7 @@ async function analyzeFiles(prFiles, prAuthor, prCreatedAt, achrevPerFileMap) {
 }
 
 
-async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLoginMap, turnoverRecByLoginMap) {
+async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLoginMap, turnoverRecByLoginMap, whoDoByLoginMap) {
   console.log('📈 Calculating detailed reviewer metrics...');
   
   const filePaths = prFiles.map(f => f.filename);
@@ -446,6 +481,8 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLogin
     const activity = activityData.get(metrics.login) || {};
     const expertScore = expertScoreMap.get(metrics.login) || { cxFactorScore: 0, fileCount: 0 };
     const turnoverRecScore = turnoverRecScoreMap.get(metrics.login) || { turnoverRec: 0, learnRec: 0, retentionRec: 0, knowledge: 0 };
+    const whoDoScore = whoDoByLoginMap.get(metrics.login) || { whoDoScore: 0, rawScore: 0, load: 0, totalOpenReviews: 0 };
+
   
     
     return {
@@ -470,7 +507,12 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLogin
       turnoverRecScore: turnoverRecScore.turnoverRec,
       learnRecScore: turnoverRecScore.learnRec,
       retentionRecScore: turnoverRecScore.retentionRec,
-      knowledgeScore: turnoverRecScore.knowledge
+      knowledgeScore: turnoverRecScore.knowledge,
+      // WhoDo scores
+      whoDoScore: whoDoScore.whoDoScore,
+      whoDoRawScore: whoDoScore.rawScore,
+      whoDoLoad: whoDoScore.load,
+      whoDoOpenReviews: whoDoScore.totalOpenReviews
     };
   });
   
@@ -590,6 +632,7 @@ No developers found with prior experience on these files. Consider assigning rev
     login: m.login,
     cxFactorScore: (typeof m.cxFactorScore === 'number') ? m.cxFactorScore : 0,
     turnoverRecScore: (typeof m.turnoverRecScore === 'number') ? m.turnoverRecScore : 0,
+    whoDoScore: (typeof m.whoDoScore === 'number') ? m.whoDoScore : 0,
     knownFilesList: Array.isArray(m.knownFilesList) ? m.knownFilesList : []
   })) : [];
 
@@ -618,21 +661,28 @@ No developers found with prior experience on these files. Consider assigning rev
   let candidateScoreSection = '';
   if (RecommendationScores.length > 0) {
     candidateScoreSection += `### 📝 Candidate Reviewers Score
-
-| Developer | Expertise Score | Knowledge Distribution Score |
-|-----------|----------------|------------------------------|
-`;
-
+  
+  | Developer | Expertise Score | Knowledge Distribution Score | Workload Balancing Score |
+  |-----------|----------------|------------------------------|--------------------------|
+  `;
+  
     RecommendationScores.forEach(metrics => {
-      candidateScoreSection += `| \`${metrics.login}\` | ${(metrics.cxFactorScore || 0).toFixed(3)} | ${(metrics.turnoverRecScore || 0).toFixed(3)} |\n`;
+      // Find the corresponding WhoDo score for this login
+      const whoDoData = reviewerMetrics.find(rm => rm.login === metrics.login);
+      const whoDoScore = whoDoData ? (whoDoData.whoDoScore || 0) : 0;
+      
+      candidateScoreSection += `| \`${metrics.login}\` | ${(metrics.cxFactorScore || 0).toFixed(3)} | ${(metrics.turnoverRecScore || 0).toFixed(3)} | ${whoDoScore.toFixed(3)} |\n`;
     });
 
     // Add the requested extra row (Top Candidate, user with highest expertise, user with highest knowledge distribution)
-    candidateScoreSection += `| Top Candidate | \`${topExpert}\` | \`${topKD}\` |\n`;
+    const topWhoDoEntry = metricsWithDefaults.slice().sort((a, b) => (b.whoDoScore || 0) - (a.whoDoScore || 0))[0];
+    const topWhoDo = topWhoDoEntry ? topWhoDoEntry.login : '_None_';
+    
+    candidateScoreSection += `| Top Candidate | \`${topExpert}\` | \`${topKD}\` | \`${topWhoDo}\` |\n`;
   } else {
     candidateScoreSection += `### 📝 Candidate Reviewers Score
-
-_No candidate metrics available for this PR._\n`;
+  
+  _No candidate metrics available for this PR._\n`;
   }
 
   // --- Build Suggestions section (same logic as before) ---
