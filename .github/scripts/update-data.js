@@ -10,69 +10,165 @@ const supabase = createClient(
 );
 
 async function updateRepositoryData() {
-  console.log('🔄 Updating repository data...');
+  console.log('🔄 Starting repository data update...');
   
   try {
     const context = github.context;
     
     if (context.eventName === 'push') {
-      // For push events, add a small delay to ensure merge is complete
-      if (context.payload.commits && context.payload.commits.length > 1) {
-        console.log('🔄 Multiple commits detected, waiting for merge to complete...');
-        await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay
-      }
       await processPushEvent(context);
     } else if (context.eventName === 'pull_request') {
       await processPullRequestEvent(context);
     }
     
-    console.log('✅ Repository data updated successfully!');
+    console.log('✅ Repository data update completed successfully!');
     
   } catch (error) {
-    console.error('❌ Error updating data:', error);
-    core.setFailed(error.message);
+    console.error('❌ WORKFLOW FAILED - Error details:');
+    console.error('Event:', github.context.eventName);
+    console.error('Repository:', github.context.repo);
+    console.error('Error message:', error.message);
+    console.error('Stack trace:', error.stack);
+    core.setFailed(`Workflow failed: ${error.message}`);
   }
 }
 
 async function processPushEvent(context) {
   const commits = context.payload.commits || [];
+  console.log(`📝 Processing ${commits.length} commits from push event`);
   
   for (const commitData of commits) {
-    await processNewCommit(commitData.id);
+    // Skip merge commits (they have multiple parents and message usually starts with "Merge")
+    if (commitData.message && commitData.message.startsWith('Merge ')) {
+      console.log(`⏭️ Skipping merge commit: ${commitData.id.substring(0, 8)} - "${commitData.message.substring(0, 50)}..."`);
+      continue;
+    }
+    
+    await processCommitWithLogs(commitData.id);
   }
 }
 
 async function processPullRequestEvent(context) {
   const pr = context.payload.pull_request;
+  const action = context.payload.action;
   
-  if (pr.state === 'closed' && pr.merged) {
-    // Wait a bit to ensure merge commits are accessible
-    console.log('🔄 PR merged, waiting for commits to be available...');
-    await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
-    
-    // First ensure PR exists in database
-    await ensurePRExists(pr);
-    
-    // Then process the merge commits FIRST
-    await processMergeCommits(pr);
-    
-    // Finally process PR data (reviews, comments)
+  console.log(`📋 Processing PR #${pr.number} - Action: ${action}, State: ${pr.state}`);
+  
+  if (action === 'closed' && pr.merged) {
+    console.log(`🔀 PR #${pr.number} was merged, processing...`);
     await processMergedPR(pr);
+  } else if (action === 'reopened') {
+    console.log(`🔄 PR #${pr.number} was reopened, checking for updates...`);
+    await processReopenedPR(pr);
+  } else if (action === 'closed' && !pr.merged) {
+    console.log(`❌ PR #${pr.number} was closed without merging, updating status...`);
+    await updatePRStatus(pr, 'closed');
   }
 }
 
-async function processMergeCommits(pr) {
-  const token = process.env.GITHUB_TOKEN || core.getInput('github-token') || core.getInput('token');
-  
-  if (!token) {
-    console.warn('⚠️ No GitHub token available, skipping merge commit processing');
-    return;
-  }
-  
+async function processCommitWithLogs(commitSha) {
   try {
+    // Check if commit already processed
+    const existingCommit = await checkCommitExists(commitSha);
+    if (existingCommit) {
+      console.log(`⏭️ Commit ${commitSha.substring(0, 8)} already processed, skipping...`);
+      return;
+    }
+
+    // Get commit data
+    const nameStatus = await git.show([commitSha, '--name-status', '--format=']);
+    const numStat = await git.show([commitSha, '--numstat', '--format=']);
+    const commitDetails = await git.show([commitSha, '--format=fuller']);
+    const commit = numStat + '\n' + nameStatus + '\n' + commitDetails;
+    
+    const files = parseGitShowOutputWithLines(commit);
+    const commitInfo = parseCommitInfo(commit);
+    
+    if (files.length === 0) {
+      console.log(`⚠️ No files found in commit ${commitSha.substring(0, 8)}, skipping...`);
+      return;
+    }
+    
+    // Get or create contributor
+    const contributor = await getOrCreateContributor(commitInfo.author);
+    
+    let totalLinesModified = 0;
+    
+    // Process each file
+    for (const fileChange of files) {
+      if (!fileChange.path) {
+        console.warn(`⚠️ Skipping file with empty path in commit ${commitSha.substring(0, 8)}`);
+        continue;
+      }
+      
+      const file = await getOrCreateFile(fileChange.path);
+      if (!file) {
+        console.warn(`⚠️ Could not create/find file record for: ${fileChange.path}`);
+        continue;
+      }
+      
+      // Record file history if it's a rename/move
+      if (fileChange.status.startsWith('R') || fileChange.status.startsWith('C')) {
+        await recordFileHistory(file.id, fileChange.oldFile, fileChange.path, fileChange.status, commitSha);
+      }
+      
+      // Record contribution
+      await recordContribution({
+        contributor_id: contributor.id,
+        file_id: file.id,
+        activity_type: 'commit',
+        activity_id: commitSha,
+        contribution_date: new Date(commitInfo.date),
+        lines_added: fileChange.linesAdded,
+        lines_deleted: fileChange.linesDeleted,
+        lines_modified: fileChange.linesModified
+      });
+      
+      totalLinesModified += fileChange.linesModified;
+      
+      // Log individual file change
+      console.log(`📝 The following commit successfully transferred to the database:`);
+      console.log(`   Developer: ${contributor.canonical_name} (${contributor.github_login})`);
+      console.log(`   Change type: ${getChangeTypeDescription(fileChange.status)}`);
+      console.log(`   Modified file: ${fileChange.path}`);
+      console.log(`   Change size: ${fileChange.linesModified} lines modified (+${fileChange.linesAdded}/-${fileChange.linesDeleted})`);
+      console.log(`   Commit SHA: ${commitSha}`);
+      console.log(`   Commit date: ${commitInfo.date}`);
+      console.log(''); // Empty line for readability
+    }
+    
+    console.log(`✅ Commit ${commitSha.substring(0, 8)} processed successfully - ${files.length} files, ${totalLinesModified} total lines modified`);
+    
+  } catch (error) {
+    console.error(`❌ FAILED to process commit ${commitSha.substring(0, 8)}:`);
+    console.error('Error:', error.message);
+    console.error('Commit SHA:', commitSha);
+    throw error;
+  }
+}
+
+async function processMergedPR(pr) {
+  try {
+    const token = process.env.GITHUB_TOKEN || core.getInput('github-token') || core.getInput('token');
+    
+    if (!token) {
+      console.warn('⚠️ No GitHub token available, limited PR processing');
+      return;
+    }
+    
     const octokit = github.getOctokit(token);
     
-    // Get all commits from the PR
+    // Wait for merge to complete
+    console.log('🔄 Waiting for merge to complete...');
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    // Get PR data
+    const { data: files } = await octokit.rest.pulls.listFiles({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      pull_number: pr.number
+    });
+    
     const { data: prCommits } = await octokit.rest.pulls.listCommits({
       owner: github.context.repo.owner,
       repo: github.context.repo.repo,
@@ -80,114 +176,267 @@ async function processMergeCommits(pr) {
       per_page: 100
     });
     
-    console.log(`🔄 Processing ${prCommits.length} commits from PR #${pr.number}`);
+    const { data: reviews } = await octokit.rest.pulls.listReviews({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      pull_number: pr.number
+    });
     
-    // Process each commit in the PR
+    // Calculate totals
+    const totalLinesModified = files.reduce((total, file) => {
+      return total + (file.additions || 0) + (file.deletions || 0);
+    }, 0);
+    
+    const uniqueReviewers = reviews
+      .filter(review => review.user.login !== pr.user.login)
+      .map(review => review.user.login)
+      .filter((login, index, self) => self.indexOf(login) === index);
+    
+    // Start logging PR summary
+    console.log(`📋 ============ PR #${pr.number} Processing Summary ============`);
+    console.log(`PR number: ${pr.number}`);
+    console.log(`Creation date: ${pr.created_at}`);
+    console.log(`Author: ${pr.user.login}`);
+    console.log(`Change size: ${totalLinesModified} lines modified`);
+    console.log(`#commits: ${prCommits.length} & #changedFiles: ${files.length}`);
+    console.log(`Breakdown:`);
+    
+    // Process individual commits (skip merge commits)
+    let processedCommits = 0;
+    const fileCommitMap = new Map();
+    
     for (const commit of prCommits) {
+      // Skip merge commits
+      if (commit.commit.message && commit.commit.message.startsWith('Merge ')) {
+        console.log(`⏭️ Skipping merge commit: ${commit.sha.substring(0, 8)}`);
+        continue;
+      }
+      
       try {
-        // Try to process the commit
-        await processNewCommit(commit.sha);
-        console.log(`✅ Processed commit ${commit.sha.substring(0, 8)}`);
+        await processCommitWithLogs(commit.sha);
+        processedCommits++;
+        
+        // Track which files were changed by which commits
+        const commitFiles = await getCommitFiles(commit.sha);
+        commitFiles.forEach(file => {
+          if (!fileCommitMap.has(file)) {
+            fileCommitMap.set(file, []);
+          }
+          fileCommitMap.get(file).push(commit.sha.substring(0, 8));
+        });
+        
       } catch (error) {
-        console.warn(`⚠️ Could not process commit ${commit.sha}: ${error.message}`);
-        // Continue with other commits
+        console.warn(`⚠️ Could not process commit ${commit.sha.substring(0, 8)}: ${error.message}`);
       }
     }
     
-    // Also try to process the merge commit if it exists
-    if (pr.merge_commit_sha && pr.merge_commit_sha !== pr.head.sha) {
-      try {
-        await processNewCommit(pr.merge_commit_sha);
-        console.log(`✅ Processed merge commit ${pr.merge_commit_sha.substring(0, 8)}`);
-      } catch (error) {
-        console.warn(`⚠️ Could not process merge commit ${pr.merge_commit_sha}: ${error.message}`);
+    // Show file-commit breakdown
+    fileCommitMap.forEach((commits, file) => {
+      console.log(`   Changed ${file}: Commit ${commits.join(', ')}`);
+    });
+    
+    console.log(`Reviewers: ${uniqueReviewers.join(', ') || 'None'}`);
+    
+    // Process reviewers
+    let reviewContributions = 0;
+    for (const review of reviews) {
+      if (review.user.login !== pr.user.login) {
+        const reviewer = await getOrCreateContributorByLogin(review.user.login);
+        
+        for (const file of files) {
+          const fileRecord = await getOrCreateFile(file.filename);
+          if (!fileRecord) continue;
+          
+          const fileLinesModified = (file.additions || 0) + (file.deletions || 0);
+          
+          await recordContribution({
+            contributor_id: reviewer.id,
+            file_id: fileRecord.id,
+            activity_type: 'review',
+            activity_id: pr.number.toString(),
+            contribution_date: new Date(review.submitted_at),
+            lines_added: 0,
+            lines_deleted: 0,
+            lines_modified: fileLinesModified,
+            pr_number: pr.number
+          });
+          
+          reviewContributions++;
+        }
       }
     }
+    
+    // Process comments
+    const comments = await processPRComments(pr, octokit);
+    const commentsByUser = new Map();
+    comments.forEach(comment => {
+      const user = comment.contributor_login;
+      commentsByUser.set(user, (commentsByUser.get(user) || 0) + 1);
+    });
+    
+    console.log(`#reviewComments: ${comments.length}`);
+    
+    if (comments.length > 0) {
+      await insertReviewComments(comments);
+    }
+    
+    // Update/Create PR record
+    await upsertPullRequest(pr, uniqueReviewers, totalLinesModified);
+    
+    // Final summary
+    console.log(`✅ ${processedCommits} commits on ${files.length} files for ${pr.user.login} successfully transferred.`);
+    console.log(`✅ ${reviewContributions} review activities for ${uniqueReviewers.join(', ')} successfully transferred.`);
+    
+    const commentUsers = Array.from(commentsByUser.keys());
+    console.log(`✅ ${comments.length} review comments for ${commentUsers.join(', ')} successfully transferred.`);
+    console.log(`===============================================`);
     
   } catch (error) {
-    console.error(`❌ Error processing merge commits for PR #${pr.number}:`, error);
-    // Don't throw - continue with PR processing
+    console.error(`❌ FAILED to process merged PR #${pr.number}:`);
+    console.error('Error:', error.message);
+    console.error('PR data:', { number: pr.number, author: pr.user.login, merged_at: pr.merged_at });
+    throw error;
   }
 }
 
-async function ensurePRExists(pr) {
-  // Check if PR already exists
-  const { data: existingPR } = await supabase
-    .from('pull_requests')
-    .select('pr_number')
-    .eq('pr_number', pr.number)
-    .single();
+async function processReopenedPR(pr) {
+  try {
+    const token = process.env.GITHUB_TOKEN || core.getInput('github-token') || core.getInput('token');
     
-  if (existingPR) {
-    console.log(`📋 PR #${pr.number} already exists in database`);
-    return;
-  }
-  
-  console.log(`📋 PR #${pr.number} not found, inserting...`);
-  
-  // Get additional PR data if we have GitHub token
-  const token = process.env.GITHUB_TOKEN || core.getInput('github-token') || core.getInput('token');
-  let reviewers = [];
-  let totalLinesModified = 0;
-  
-  if (token) {
-    const octokit = github.getOctokit(token);
-    
-    try {
-      // Get reviewers
-      const { data: reviews } = await octokit.rest.pulls.listReviews({
-        owner: github.context.repo.owner,
-        repo: github.context.repo.repo,
-        pull_number: pr.number
-      });
-      
-      reviewers = reviews
-        .filter(review => review.user.login !== pr.user.login)
-        .map(review => ({
-          login: review.user.login,
-          submitted_at: review.submitted_at
-        }))
-        .filter((reviewer, index, self) => 
-          index === self.findIndex(r => r.login === reviewer.login)
-        );
-        
-      // Get total lines modified
-      const { data: files } = await octokit.rest.pulls.listFiles({
-        owner: github.context.repo.owner,
-        repo: github.context.repo.repo,
-        pull_number: pr.number
-      });
-      
-      totalLinesModified = files.reduce((total, file) => {
-        return total + (file.additions || 0) + (file.deletions || 0);
-      }, 0);
-      
-    } catch (error) {
-      console.warn(`⚠️ Could not fetch additional data for PR #${pr.number}: ${error.message}`);
+    if (!token) {
+      console.warn('⚠️ No GitHub token available for reopened PR processing');
+      return;
     }
+    
+    const octokit = github.getOctokit(token);
+    console.log(`🔄 Checking for new reviews and comments in reopened PR #${pr.number}...`);
+    
+    // Get existing review comments from database
+    const { data: existingComments } = await supabase
+      .from('review_comments')
+      .select('comment_date, comment_text, contributor_id')
+      .eq('pr_number', pr.number);
+    
+    // Get current comments from GitHub
+    const currentComments = await processPRComments(pr, octokit);
+    
+    // Filter out existing comments
+    const newComments = currentComments.filter(comment => {
+      return !existingComments.some(existing => 
+        existing.comment_text === comment.comment_text &&
+        new Date(existing.comment_date).getTime() === comment.comment_date.getTime()
+      );
+    });
+    
+    if (newComments.length > 0) {
+      await insertReviewComments(newComments);
+      console.log(`✅ Added ${newComments.length} new review comments to reopened PR #${pr.number}`);
+    } else {
+      console.log(`ℹ️ No new comments found in reopened PR #${pr.number}`);
+    }
+    
+    // Update PR status to 'open'
+    await updatePRStatus(pr, 'open');
+    
+  } catch (error) {
+    console.error(`❌ FAILED to process reopened PR #${pr.number}:`, error.message);
+    throw error;
   }
+}
+
+// Helper function to get files changed in a commit
+async function getCommitFiles(commitSha) {
+  try {
+    const nameStatus = await git.show([commitSha, '--name-status', '--format=']);
+    const lines = nameStatus.split('\n').filter(line => line.match(/^[A-Z]+\d*\t/));
+    return lines.map(line => {
+      const parts = line.split('\t');
+      return parts[parts.length - 1]; // Last part is always the current filename
+    }).filter(Boolean);
+  } catch (error) {
+    console.warn(`Could not get files for commit ${commitSha}: ${error.message}`);
+    return [];
+  }
+}
+
+// Helper function to record file history
+async function recordFileHistory(fileId, oldPath, newPath, changeType, commitSha) {
+  if (!oldPath || oldPath === newPath) return;
   
-  // Insert the PR
+  try {
+    await supabase
+      .from('file_history')
+      .insert({
+        file_id: fileId,
+        old_path: oldPath,
+        new_path: newPath,
+        change_type: changeType.startsWith('R') ? 'renamed' : 'copied',
+        commit_sha: commitSha
+      });
+    
+    console.log(`📝 File history recorded: ${oldPath} -> ${newPath}`);
+  } catch (error) {
+    console.warn(`Could not record file history: ${error.message}`);
+  }
+}
+
+// Helper function to get change type description
+function getChangeTypeDescription(status) {
+  const statusMap = {
+    'A': 'Added',
+    'M': 'Modified',
+    'D': 'Deleted',
+    'R': 'Renamed',
+    'C': 'Copied',
+    'U': 'Updated'
+  };
+  
+  const baseStatus = status[0];
+  return statusMap[baseStatus] || status;
+}
+
+// Helper function to update PR status
+async function updatePRStatus(pr, status) {
   const { error } = await supabase
     .from('pull_requests')
-    .insert({
+    .update({ 
+      status: status,
+      closed_date: status === 'closed' ? new Date(pr.closed_at) : null
+    })
+    .eq('pr_number', pr.number);
+    
+  if (error) {
+    console.warn(`Could not update PR #${pr.number} status: ${error.message}`);
+  } else {
+    console.log(`✅ Updated PR #${pr.number} status to: ${status}`);
+  }
+}
+
+// Helper function to upsert pull request
+async function upsertPullRequest(pr, reviewers, totalLinesModified) {
+  const reviewerObjects = reviewers.map(login => ({ login }));
+  
+  const { error } = await supabase
+    .from('pull_requests')
+    .upsert({
       pr_number: pr.number,
       status: pr.merged_at ? 'merged' : pr.state,
       author_login: pr.user.login,
-      reviewers: reviewers,
+      reviewers: reviewerObjects,
       created_date: new Date(pr.created_at),
       merged_date: pr.merged_at ? new Date(pr.merged_at) : null,
       closed_date: pr.closed_at ? new Date(pr.closed_at) : null,
       lines_modified: totalLinesModified
-    });
+    }, { onConflict: 'pr_number' });
     
   if (error) {
-    console.error(`❌ Error inserting PR #${pr.number}:`, error);
+    console.error('Error upserting PR:', error);
     throw error;
   }
-  
-  console.log(`✅ Successfully inserted PR #${pr.number}`);
 }
+
+// Keep all the existing helper functions (checkCommitExists, getOrCreateContributor, etc.)
+// ... [The rest of the helper functions remain the same as in your original code]
 
 async function checkCommitExists(commitSha) {
   const { data: existing, error } = await supabase
@@ -204,141 +453,6 @@ async function checkCommitExists(commitSha) {
   }
   
   return !!existing;
-}
-
-async function processNewCommit(commitSha) {
-  // CHECK: Skip if commit already processed
-  const existingCommit = await checkCommitExists(commitSha);
-  if (existingCommit) {
-    console.log(`⏭️ Commit ${commitSha.substring(0, 8)} already processed, skipping...`);
-    return;
-  }
-
-  // Use separate commands like in the working initialize-repo.js
-  const nameStatus = await git.show([commitSha, '--name-status', '--format=']);
-  const numStat = await git.show([commitSha, '--numstat', '--format=']);
-  const commitDetails = await git.show([commitSha, '--format=fuller']);
-  const commit = numStat + '\n' + nameStatus + '\n' + commitDetails;
-  
-  const files = parseGitShowOutputWithLines(commit);
-  
-  // Get commit info for author and date
-  const commitInfo = parseCommitInfo(commit);
-  
-  // Get or create contributor
-  const contributor = await getOrCreateContributor(commitInfo.author);
-  
-  // Process files
-  for (const fileChange of files) {
-    const file = await getOrCreateFile(fileChange.path);
-    
-    // Record contribution with lines modified
-    await recordContribution({
-      contributor_id: contributor.id,
-      file_id: file.id,
-      activity_type: 'commit',
-      activity_id: commitSha,
-      contribution_date: new Date(commitInfo.date),
-      lines_added: fileChange.linesAdded,
-      lines_deleted: fileChange.linesDeleted,
-      lines_modified: fileChange.linesModified
-    });
-  }
-}
-
-async function processMergedPR(pr) {
-  const token = process.env.GITHUB_TOKEN || core.getInput('github-token') || core.getInput('token');
-  
-  if (!token) {
-    console.warn('⚠️ No GitHub token available, skipping PR file analysis');
-    return;
-  }
-  
-  const octokit = github.getOctokit(token);
-  
-  const { data: files } = await octokit.rest.pulls.listFiles({
-    owner: github.context.repo.owner,
-    repo: github.context.repo.repo,
-    pull_number: pr.number
-  });
-  
-  const { data: reviews } = await octokit.rest.pulls.listReviews({
-    owner: github.context.repo.owner,
-    repo: github.context.repo.repo,
-    pull_number: pr.number
-  });
-  
-  // Calculate total lines modified in PR
-  const totalLinesModified = files.reduce((total, file) => {
-    return total + (file.additions || 0) + (file.deletions || 0);
-  }, 0);
-  
-  // Collect unique reviewers (excluding PR author)
-  const reviewers = reviews
-    .filter(review => review.user.login !== pr.user.login)
-    .map(review => ({
-      login: review.user.login,
-      submitted_at: review.submitted_at
-    }))
-    .filter((reviewer, index, self) => 
-      index === self.findIndex(r => r.login === reviewer.login)
-    );
-  
-  // Process each reviewer's contribution to each file
-  for (const review of reviews) {
-    if (review.user.login !== pr.user.login) { // Exclude PR author
-      const reviewer = await getOrCreateContributorByLogin(review.user.login);
-      
-      for (const file of files) {
-        const fileRecord = await getOrCreateFile(file.filename);
-        
-        // Skip if file record creation failed
-        if (!fileRecord) {
-          console.warn(`⚠️ Skipping contribution for invalid file: ${file.filename}`);
-          continue;
-        }
-        
-        const fileLinesModified = (file.additions || 0) + (file.deletions || 0);
-        
-        await recordContribution({
-          contributor_id: reviewer.id,
-          file_id: fileRecord.id,
-          activity_type: 'review',
-          activity_id: pr.number.toString(),
-          contribution_date: new Date(review.submitted_at),
-          lines_added: 0,
-          lines_deleted: 0,
-          lines_modified: fileLinesModified,
-          pr_number: pr.number
-        });
-      }
-    }
-  }
-  
-  // NEW: Process and insert review comments
-  const comments = await processPRComments(pr, octokit);
-  if (comments.length > 0) {
-    console.log(`💬 Found ${comments.length} comments for PR #${pr.number}`);
-    await insertReviewComments(comments);
-  }
-  
-  // Record PR with reviewers
-  const { error } = await supabase
-    .from('pull_requests')
-    .upsert({
-      pr_number: pr.number,
-      status: 'merged',
-      author_login: pr.user.login,
-      reviewers: reviewers,
-      created_date: new Date(pr.created_at),
-      merged_date: new Date(pr.merged_at),
-      closed_date: new Date(pr.closed_at),
-      lines_modified: totalLinesModified
-    }, { onConflict: 'pr_number' });
-    
-  if (error) {
-    console.error('Error updating PR:', error);
-  }
 }
 
 async function processPRComments(pr, octokit) {
@@ -412,75 +526,43 @@ async function processPRComments(pr, octokit) {
 async function insertReviewComments(comments) {
   if (comments.length === 0) return;
   
-  console.log(`💬 Checking for existing comments before inserting ${comments.length} review comments...`);
+  console.log(`💬 Processing ${comments.length} review comments...`);
   
-  // Get contributors to map logins to IDs
-  const { data: dbContributors, error: contributorError } = await supabase
-    .from('contributors')
-    .select('id, github_login');
-    
-  if (contributorError) {
-    console.error('Error fetching contributors for comments:', contributorError);
-    throw contributorError;
-  }
-  
-  const contributorLookup = new Map();
-  dbContributors.forEach(c => {
-    contributorLookup.set(c.github_login.toLowerCase(), c.id);
-  });
-  
-  // Filter out existing comments
   const mappedComments = [];
   let skippedCount = 0;
-  let duplicateCount = 0;
   
   for (const comment of comments) {
-    const contributorId = contributorLookup.get(comment.contributor_login.toLowerCase());
-    
-    if (!contributorId) {
-      // Try to create contributor if not exists
-      const newContributor = await getOrCreateContributorByLogin(comment.contributor_login);
-      if (!newContributor) {
-        skippedCount++;
-        if (skippedCount <= 5) {
-          console.warn(`⚠️ Skipping comment from unknown contributor: ${comment.contributor_login}`);
-        }
-        continue;
-      }
-      contributorId = newContributor.id;
+    const contributor = await getOrCreateContributorByLogin(comment.contributor_login);
+    if (!contributor) {
+      skippedCount++;
+      continue;
     }
     
     // Check if comment already exists
     const { data: existingComment } = await supabase
       .from('review_comments')
       .select('id')
-      .eq('contributor_id', contributorId)
+      .eq('contributor_id', contributor.id)
       .eq('pr_number', comment.pr_number)
       .eq('comment_date', comment.comment_date)
       .eq('comment_text', comment.comment_text)
       .single();
       
-    if (existingComment) {
-      duplicateCount++;
-      continue;
-    }
+    if (existingComment) continue;
     
     mappedComments.push({
-      contributor_id: contributorId,
+      contributor_id: contributor.id,
       pr_number: comment.pr_number,
       comment_date: comment.comment_date,
       comment_text: comment.comment_text
     });
   }
   
-  console.log(`💬 Mapped ${mappedComments.length} new comments (skipped ${skippedCount}, duplicates ${duplicateCount})`);
-  
   if (mappedComments.length === 0) {
-    console.warn('⚠️ No new comments to insert after duplicate checking!');
+    console.log('ℹ️ No new comments to insert');
     return;
   }
   
-  // Insert comments
   const { error } = await supabase
     .from('review_comments')
     .insert(mappedComments);
@@ -494,10 +576,8 @@ async function insertReviewComments(comments) {
 }
 
 async function getOrCreateContributor(authorInfo) {
-  // First try to find by GitHub login
   let githubLogin = authorInfo.login;
   
-  // If no login provided, try to extract from email
   if (!githubLogin && authorInfo.email && authorInfo.email.includes('@users.noreply.github.com')) {
     const match = authorInfo.email.match(/(\d+\+)?([^@]+)@users\.noreply\.github\.com/);
     if (match && match[2]) {
@@ -505,7 +585,6 @@ async function getOrCreateContributor(authorInfo) {
     }
   }
   
-  // Fallback to normalized name
   if (!githubLogin) {
     githubLogin = authorInfo.name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
   }
@@ -513,12 +592,11 @@ async function getOrCreateContributor(authorInfo) {
   const { data: existing } = await supabase
     .from('contributors')
     .select('*')
-    .eq('github_login', githubLogin) // Search by GitHub login first
+    .eq('github_login', githubLogin)
     .single();
     
   if (existing) return existing;
   
-  // Try to find by email if not found by login
   const { data: existingByEmail } = await supabase
     .from('contributors')
     .select('*')
@@ -527,12 +605,11 @@ async function getOrCreateContributor(authorInfo) {
     
   if (existingByEmail) return existingByEmail;
   
-  // Create new contributor
   const { data: newContributor, error } = await supabase
     .from('contributors')
     .insert({
       github_login: githubLogin,
-      canonical_name: githubLogin, // Use GitHub login as canonical name
+      canonical_name: githubLogin,
       email: authorInfo.email
     })
     .select()
@@ -551,7 +628,6 @@ async function getOrCreateContributorByLogin(login) {
     
   if (existing) return existing;
   
-  // Create new contributor
   const { data: newContributor, error } = await supabase
     .from('contributors')
     .insert({
@@ -567,16 +643,13 @@ async function getOrCreateContributorByLogin(login) {
 }
 
 async function getOrCreateFile(path) {
-  // Defensive: ensure path is a non-empty string
   if (!path || typeof path !== 'string' || path.trim() === '') {
     console.error('getOrCreateFile called with empty/falsy path:', JSON.stringify(path));
-    // Return null so caller can decide what to do (and avoid inserting bad rows)
     return null;
   }
 
   const canonical = path.trim();
 
-  // Check existing by canonical_path (your schema)
   const { data: existing, error: selectError } = await supabase
     .from('files')
     .select('*')
@@ -584,12 +657,10 @@ async function getOrCreateFile(path) {
     .single();
 
   if (selectError && selectError.code !== 'PGRST116') {
-    // PGRST116 is a "No rows found" in some versions; log otherwise
     console.debug('getOrCreateFile: select error (non-fatal):', selectError);
   }
   if (existing) return existing;
 
-  // Create new file record
   const { data: newFile, error } = await supabase
     .from('files')
     .insert({
@@ -608,7 +679,6 @@ async function getOrCreateFile(path) {
 }
 
 async function recordContribution(contribution) {
-  // Check if this specific contribution already exists
   const { data: existing } = await supabase
     .from('contributions')
     .select('id')
@@ -619,7 +689,6 @@ async function recordContribution(contribution) {
     .single();
     
   if (existing) {
-    console.log(`⏭️ Contribution already exists: ${contribution.activity_type} ${contribution.activity_id} by contributor ${contribution.contributor_id} for file ${contribution.file_id}`);
     return;
   }
   
@@ -637,77 +706,25 @@ function parseCommitInfo(commitOutput) {
   const authorLine = lines.find(l => l.startsWith('Author:'));
   const dateLine = lines.find(l => l.startsWith('AuthorDate:'));
   
-  const files = [];
-  let inFilesList = false;
-  
-  // Parse both --name-status and --numstat output
-  const numstatLines = [];
-  const namestatLines = [];
-  
-  for (const line of lines) {
-    if (line.match(/^\d+\t\d+\t/)) {
-      // numstat format: additions deletions filename
-      numstatLines.push(line);
-    } else if (line.match(/^[AMD]\t/)) {
-      // name-status format: status filename
-      namestatLines.push(line);
-    }
-  }
-  
-  // Combine numstat and name-status data
-  namestatLines.forEach((nameLine, index) => {
-    const [status, path] = nameLine.split('\t');
-    let linesAdded = 0;
-    let linesDeleted = 0;
-    let linesModified = 0;
-    
-    if (numstatLines[index]) {
-      const parts = numstatLines[index].split('\t');
-      linesAdded = parseInt(parts[0]) || 0;
-      linesDeleted = parseInt(parts[1]) || 0;
-      linesModified = linesAdded + linesDeleted;
-    }
-    
-    files.push({ 
-      status, 
-      file: path, 
-      linesAdded,
-      linesDeleted,
-      linesModified 
-    });
-  });
-  
   return {
     author: {
       name: authorLine.split(' <')[0].replace('Author: ', ''),
       email: authorLine.split(' <')[1].replace('>', ''),
       login: null
     },
-    date: dateLine.replace('AuthorDate: ', ''),
-    files
+    date: dateLine.replace('AuthorDate: ', '')
   };
 }
 
 function parseGitShowOutputWithLines(output) {
-  const lines = output.split('\n'); // keep blanks for debug
+  const lines = output.split('\n');
   const files = [];
 
-  // numstat lines look like: "12\t3\tpath" or "-\t-\tpath"
   const numstatLines = lines.filter(line => line.match(/^\d+\t\d+\t/) || line.match(/^-\t-\t/));
-
-  // name-status lines should start with a status token then a TAB.
-  // Examples:
-  //  A\tpath
-  //  M\tpath
-  //  R100\told\tnew
-  //  C100\told\tnew
-  // Require a tab to avoid picking up "Author:" lines etc.
   const namestatLines = lines.filter(line => line.match(/^[A-Z]+\d*\t/));
 
-  // Debug: if anything unexpected appears, log a compact summary
   if (namestatLines.length === 0 && numstatLines.length === 0) {
-    console.debug('parseGitShowOutputWithLines: no numstat or name-status lines found. Full output preview (first 40 lines):');
-    console.debug(lines.slice(0, 40).map((l, i) => `${i+1}: ${l}`));
+    console.debug('parseGitShowOutputWithLines: no numstat or name-status lines found');
   }
 
   namestatLines.forEach((nameLine, index) => {
@@ -720,13 +737,11 @@ function parseGitShowOutputWithLines(output) {
     let linesDeleted = 0;
     let linesModified = 0;
 
-    // Handle rename/copy cases where there are 3 parts: status, old, new
     if (statusRaw.startsWith('R') || statusRaw.startsWith('C')) {
       oldFile = parts[1];
       file = parts[2];
     }
 
-    // Get line changes from numstat if present at same index
     if (numstatLines[index]) {
       const numstatParts = numstatLines[index].split('\t');
       linesAdded = numstatParts[0] === '-' ? 0 : parseInt(numstatParts[0]) || 0;
@@ -734,15 +749,12 @@ function parseGitShowOutputWithLines(output) {
       linesModified = linesAdded + linesDeleted;
     }
 
-    // Defensive: if file is falsy (undefined/null/empty), log context for debugging
     if (!file) {
       console.warn('parseGitShowOutputWithLines: parsed empty file path.', {
         nameLine,
         index,
-        statusRaw,
-        numstatLine: numstatLines[index] || null
+        statusRaw
       });
-      // Skip adding an entry with an empty path
       return;
     }
 
@@ -759,7 +771,6 @@ function parseGitShowOutputWithLines(output) {
   return files;
 }
 
-// Run if called directly
 if (require.main === module) {
   updateRepositoryData();
 }
