@@ -227,22 +227,21 @@ async function whoDo_suggestion(
         for (const fileId of filesInDir) {
           const commitKey = `${devId}_${fileId}_commit`;
           const commits = contribByDevFileActivity.get(commitKey) || [];
-          nChangeDir += commits.length;
           
-          if (commits.length > 0) {
-            const fileLastChange = new Date(Math.max(...commits.map(c => new Date(c.contribution_date).getTime())));
-            if (!lastChangeDirDate || fileLastChange > lastChangeDirDate) {
-              lastChangeDirDate = fileLastChange;
+          for (const commit of commits) {
+            nChangeDir += 1;
+            const commitDate = new Date(commit.contribution_date);
+            if (!lastChangeDirDate || commitDate > lastChangeDirDate) {
+              lastChangeDirDate = commitDate;
             }
           }
         }
         
         if (nChangeDir > 0 && lastChangeDirDate) {
           const tChangeDir = daysDiff(prRefDate, lastChangeDirDate);
-          // Avoid division by zero: tChangeDir is guaranteed >= 1 by daysDiff function
           sumDirCommits += nChangeDir / tChangeDir;
         }
-
+      
         // Directory reviews
         let nReviewDir = 0;
         let lastReviewDirDate = null;
@@ -250,19 +249,18 @@ async function whoDo_suggestion(
         for (const fileId of filesInDir) {
           const reviewKey = `${devId}_${fileId}_review`;
           const reviews = contribByDevFileActivity.get(reviewKey) || [];
-          nReviewDir += reviews.length;
           
-          if (reviews.length > 0) {
-            const fileLastReview = new Date(Math.max(...reviews.map(r => new Date(r.contribution_date).getTime())));
-            if (!lastReviewDirDate || fileLastReview > lastReviewDirDate) {
-              lastReviewDirDate = fileLastReview;
+          for (const review of reviews) {
+            nReviewDir += 1;
+            const reviewDate = new Date(review.contribution_date);
+            if (!lastReviewDirDate || reviewDate > lastReviewDirDate) {
+              lastReviewDirDate = reviewDate;
             }
           }
         }
         
         if (nReviewDir > 0 && lastReviewDirDate) {
           const tReviewDir = daysDiff(prRefDate, lastReviewDirDate);
-          // Avoid division by zero: tReviewDir is guaranteed >= 1 by daysDiff function
           sumDirReviews += nReviewDir / tReviewDir;
         }
       }
