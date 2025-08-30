@@ -32,7 +32,7 @@ namespace RelationalGit.Recommendation
         {
             var totalCommits = pullRequestContext.PullRequestKnowledgeables.Sum(q=>q.NumberOfCommits);
             var totalReviews = pullRequestContext.PullRequestKnowledgeables.Sum(q => q.NumberOfReviews);
-            if (totalCommits==0 || totalReviews==0)
+            if (totalCommits == 0 || totalReviews == 0)
             {
                 return 0;
             }
