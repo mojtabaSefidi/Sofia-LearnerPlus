@@ -155,7 +155,9 @@ async function suggestReviewers() {
         1.0,             // C2
         1.0,             // C3
         1.0,             // C4
-        0.5              // theta
+        0.5,             // theta
+        false            // verbose
+        
       );
     } catch (err) {
       console.error('⚠️ whoDo_suggestion failed or errored:', err);
