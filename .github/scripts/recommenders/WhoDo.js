@@ -156,7 +156,8 @@ async function whoDo_suggestion(
       .from('contributions')
       .select('contributor_id, file_id, activity_type, contribution_date')
       .in('activity_type', ['commit', 'review'])
-      .lt('contribution_date', prRefDate.toISOString()); // Only consider contributions before PR
+      .lt('contribution_date', prRefDate.toISOString())
+      .limit(1000000); // Very high limit
 
     if (contribHistErr) {
       console.error('Error fetching all contributions:', contribHistErr);
