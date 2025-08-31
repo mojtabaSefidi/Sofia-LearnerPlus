@@ -1,10 +1,16 @@
 name: Assign PR Reviewer
 
 on:
-  pull_request_review_comment:
-    types: [created]
-  issue_comment:
-    types: [created]
+  workflow_dispatch:
+    inputs:
+      reviewer:
+        description: 'GitHub username of the reviewer to assign'
+        required: true
+        type: string
+      pr_number:
+        description: 'Pull request number'
+        required: true
+        type: string
 
 jobs:
   assign-reviewer:
@@ -19,48 +25,19 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         
-      - name: Check if PR and parse command
-        id: parse
-        run: |
-          # Handle both PR review comments and issue comments on PRs
-          if [ "${{ github.event_name }}" == "pull_request_review_comment" ]; then
-            comment="${{ github.event.comment.body }}"
-            pr_number="${{ github.event.pull_request.number }}"
-          elif [ "${{ github.event_name }}" == "issue_comment" ] && [ "${{ github.event.issue.pull_request }}" != "" ]; then
-            comment="${{ github.event.comment.body }}"
-            pr_number="${{ github.event.issue.number }}"
-          else
-            echo "Not a PR comment, skipping"
-            exit 0
-          fi
-          
-          # Parse the command
-          if [[ "$comment" =~ ^/assign-reviewer[[:space:]]+([a-zA-Z0-9_-]+) ]]; then
-            reviewer="${BASH_REMATCH[1]}"
-            echo "reviewer=$reviewer" >> $GITHUB_OUTPUT
-            echo "pr_number=$pr_number" >> $GITHUB_OUTPUT
-            echo "valid_command=true" >> $GITHUB_OUTPUT
-            echo "Found valid command: /assign-reviewer $reviewer for PR #$pr_number"
-          else
-            echo "valid_command=false" >> $GITHUB_OUTPUT
-            echo "Comment does not contain valid /assign-reviewer command"
-            exit 0
-          fi
-        
       - name: Assign Reviewer to PR
-        if: steps.parse.outputs.valid_command == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Assign the reviewer to the PR
-          gh pr edit ${{ steps.parse.outputs.pr_number }} --add-reviewer "${{ steps.parse.outputs.reviewer }}"
+          gh pr edit ${{ github.event.inputs.pr_number }} --add-reviewer "${{ github.event.inputs.reviewer }}"
           
           # Post a confirmation comment
-          gh pr comment ${{ steps.parse.outputs.pr_number }} --body "🤖 **Reviewer Assigned**: @${{ steps.parse.outputs.reviewer }} has been requested to review this PR."
+          gh pr comment ${{ github.event.inputs.pr_number }} --body "🤖 **Reviewer Assigned**: @${{ github.event.inputs.reviewer }} has been requested to review this PR."
           
       - name: Handle Assignment Failure
-        if: failure() && steps.parse.outputs.valid_command == 'true'
+        if: failure()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr comment ${{ steps.parse.outputs.pr_number }} --body "⚠️ **Assignment Failed**: Could not assign @${{ steps.parse.outputs.reviewer }} as a reviewer. Please check if the username is valid and they have repository access."
+          gh pr comment ${{ github.event.inputs.pr_number }} --body "⚠️ **Assignment Failed**: Could not assign @${{ github.event.inputs.reviewer }} as a reviewer. Please check if the username is valid and they have repository access."
