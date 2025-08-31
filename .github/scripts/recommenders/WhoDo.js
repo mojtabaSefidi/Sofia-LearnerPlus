@@ -155,9 +155,8 @@ async function whoDo_suggestion(
     const { data: allContributions, error: contribHistErr } = await supabase
       .from('contributions')
       .select('contributor_id, file_id, activity_type, contribution_date')
-      // .in('activity_type', ['commit', 'review'])
-      // .lt('contribution_date','2025-08-30T20:41:54.000Z')
-      .range(0, 2999);
+      .in('activity_type', ['commit', 'review'])
+      .lt('contribution_date','2025-08-30T20:41:54.000Z');
 
     if (contribHistErr) {
       console.error('Error fetching all contributions:', contribHistErr);
