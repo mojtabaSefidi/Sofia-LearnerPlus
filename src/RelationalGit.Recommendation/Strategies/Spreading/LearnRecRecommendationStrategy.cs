@@ -16,7 +16,7 @@ namespace RelationalGit.Recommendation
             var prFiles = pullRequestContext.PullRequestFiles.Select(q => pullRequestContext.CanononicalPathMapper[q.FileName])
                 .Where(q => q != null).ToArray();
 
-            var reviewedFiles = reviewer.GetTouchedFiles().Where(q=>prFiles.Contains(q));
+            var reviewedFiles = reviewer.GetTouchedFiles().Where(q => prFiles.Contains(q));
 
             var specializedKnowledge = reviewedFiles.Count() / (double)pullRequestContext.PullRequestFiles.Length;
 
