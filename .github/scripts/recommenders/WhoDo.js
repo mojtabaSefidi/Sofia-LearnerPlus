@@ -198,17 +198,13 @@ async function whoDo_suggestion(
         const commits = contribByDevFileActivity.get(commitKey) || [];
         const nChangeFile = commits.length;
 
-        console.log(`key: ${commitKey}, commit:${commits}, nChangeFile:${nChangeFile}`);
-        console.log(`-------------------`);
-        
-
         if (nChangeFile > 0) {
           const lastChangeDate = new Date(Math.max(...commits.map(c => new Date(c.contribution_date).getTime())));
           const tChangeFile = daysDiff(prRefDate, lastChangeDate);
           // Avoid division by zero: tChangeFile is guaranteed >= 1 by daysDiff function
           sumFileCommits += nChangeFile / tChangeFile;
           console.log(`key: ${commitKey}, commit:${commits}, nChangeFile:${nChangeFile}, tChangeFile:${tChangeFile}, sumFileCommits:${sumFileCommits}`);
-          console.log(`-------------------`);
+          console.log(`--------File-----------`);
         }
 
         // File reviews
@@ -248,6 +244,8 @@ async function whoDo_suggestion(
         if (nChangeDir > 0 && lastChangeDirDate) {
           const tChangeDir = daysDiff(prRefDate, lastChangeDirDate);
           sumDirCommits += nChangeDir / tChangeDir;
+          console.log(`nChangeFile:${nChangeDir}, tChangeFile:${tChangeDir}, sumFileCommits:${sumDirCommits}`);
+          console.log(`--------DIR-----------`);
         }
       
         // Directory reviews
@@ -291,7 +289,7 @@ async function whoDo_suggestion(
     console.log('  Contributions grouped:', contribByDevFileActivity.size);
     for (const [devId, meta] of candidatesMap) {
       const scoreObj = candidateScores.get(devId);
-      console.log(`  Dev: ${meta.login}, FileCommits=${scoreObj?.sumFileCommits.toFixed(2)}, DirCommits=${scoreObj?.sumDirCommits.toFixed(2)}, FileReviews=${scoreObj?.sumFileReviews.toFixed(2)}, DirReviews=${scoreObj?.sumDirReviews.toFixed(2)}, RawScore=${scoreObj?.score.toFixed(2)}`);
+      console.log(`  Dev: ${meta.login}, FileCommits=${scoreObj?.sumFileCommits.toFixed(3)}, DirCommits=${scoreObj?.sumDirCommits.toFixed(3)}, FileReviews=${scoreObj?.sumFileReviews.toFixed(3)}, DirReviews=${scoreObj?.sumDirReviews.toFixed(3)}, RawScore=${scoreObj?.score.toFixed(3)}`);
     }
     
     // Phase E: Compute Load(D)
