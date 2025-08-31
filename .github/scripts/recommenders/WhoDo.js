@@ -201,6 +201,8 @@ async function whoDo_suggestion(
         const commitKey = `${devId}_${fileId}_commit`;
         const commits = contribByDevFileActivity.get(commitKey) || [];
         const nChangeFile = commits.length;
+        console.log(`devID: ${devId}, fileID: ${fileId}, numCommit:${nChangeFile}`);
+        console.log(`-----------`);
         
         if (nChangeFile > 0) {
           const lastChangeDate = new Date(Math.max(...commits.map(c => new Date(c.contribution_date).getTime())));
