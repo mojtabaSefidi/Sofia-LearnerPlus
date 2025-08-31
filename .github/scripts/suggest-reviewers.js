@@ -664,6 +664,9 @@ No developers found with prior experience on these files. Consider assigning rev
   // Add topWhoDo calculation here as well
   const topWhoDoEntry = metricsWithDefaults.slice().sort((a, b) => (b.whoDoScore || 0) - (a.whoDoScore || 0))[0];
   const topWhoDo = topWhoDoEntry ? topWhoDoEntry.login : '_None_';
+
+  const repoUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}`;
+  const workflowDispatchUrl = `${repoUrl}/actions/workflows/manual-assign-reviewer.yml`;
   
   // --- Candidate Reviewers Score table (this will be shown first) ---
   let candidateScoreSection = '';
@@ -685,10 +688,28 @@ No developers found with prior experience on these files. Consider assigning rev
     // Add the Top Candidate row
     candidateScoreSection += `| **Top Candidate** | \`${topExpert}\` | \`${topKD}\` | \`${topWhoDo}\` |\n`;
     
-    // Add the new "Assign As Reviewer" row
-    candidateScoreSection += `| **Assign As Reviewer** | \`/assign-reviewer ${topExpert}\` | \`/assign-reviewer ${topKD}\` | \`/assign-reviewer ${topWhoDo}\` |\n`;
+    // Add the copy/paste command row
+    candidateScoreSection += `| **Copy & Paste Command** | \`/assign-reviewer ${topExpert}\` | \`/assign-reviewer ${topKD}\` | \`/assign-reviewer ${topWhoDo}\` |\n`;
+    
+    // Add the workflow dispatch row
+    candidateScoreSection += `| **One-Click Assignment** | [🚀 Assign ${topExpert}](${workflowDispatchUrl}) | [🚀 Assign ${topKD}](${workflowDispatchUrl}) | [🚀 Assign ${topWhoDo}](${workflowDispatchUrl}) |\n`;
+    
+    candidateScoreSection += `\n**Assignment Options:**
+    
+    **Option 1 - Copy & Paste (Fastest):**
+    Copy any command above and paste it as a comment on this PR:
+    - \`/assign-reviewer ${topExpert}\` (Expertise)
+    - \`/assign-reviewer ${topKD}\` (Knowledge Distribution)  
+    - \`/assign-reviewer ${topWhoDo}\` (Workload Balancing)
+    
+    **Option 2 - One-Click Workflow:**
+    1. Click any 🚀 link above to open the workflow page
+    2. Enter PR number: **${pr.number}**
+    3. Enter reviewer username (e.g., **${topExpert}**)
+    4. Click "Run workflow"
+    \n`;
 
-    candidateScoreSection += `\n**To assign reviewers automatically, copy and paste your desired command as a comment on this PR**\n`;
+    // candidateScoreSection += `\n**To assign reviewers automatically, copy and paste your desired command as a comment on this PR**\n`;
   
   } else {
     candidateScoreSection += `### 📝 Candidate Reviewers Score
