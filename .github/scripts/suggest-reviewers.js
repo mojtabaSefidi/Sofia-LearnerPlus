@@ -813,6 +813,8 @@ suggestionsSection += `**Recommendation:** Assign **two learners** to distribute
   // Candidate score first
   comment += candidateScoreSection;
 
+  comment += quickAssignSection;
+
   // Suggestions next
   comment += suggestionsSection;
 
