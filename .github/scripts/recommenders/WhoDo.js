@@ -163,6 +163,9 @@ async function whoDo_suggestion(
       throw contribHistErr;
     }
 
+    const contributionCount = allContributions ? allContributions.length : 0;
+    console.log(`Total contributions found: ${contributionCount}`);
+
     // Organize contributions by contributor and file/activity type
     const contribByDevFileActivity = new Map(); // "devId_fileId_activityType" -> contributions[]
     
@@ -173,6 +176,9 @@ async function whoDo_suggestion(
       }
       contribByDevFileActivity.get(key).push(contrib);
     }
+
+    const mapSize = contribByDevFileActivity.size;
+    console.log(`Number of unique contributor-file-activity combos: ${mapSize}`);
 
     // Helper function to calculate days difference
     const daysDiff = (date1, date2) => {
