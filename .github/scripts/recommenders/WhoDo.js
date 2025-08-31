@@ -17,7 +17,7 @@ async function whoDo_suggestion(
   C3 = 1.0,
   C4 = 1.0,
   theta = 0.5,
-  verbos = false
+  verbose = false
 ) {
   console.log('🔬 Running whoDo_suggestion...');
 
@@ -36,7 +36,7 @@ async function whoDo_suggestion(
 
   try {
     // Phase A: Candidate set & mapping
-    if (verbos) {console.log('Phase A: Building candidate set...');}
+    if (verbose) {console.log('Phase A: Building candidate set...');}
     
     // Map PR author to contributor id and get all candidates
     const { data: contributors, error: contribErr } = await supabase
@@ -102,7 +102,7 @@ async function whoDo_suggestion(
     }
 
     // Phase B: Build P (parent directories) and files in those directories
-    if (verbos) {console.log(console.log('Phase B: Computing parent directories...');}
+    if (verbose) {console.log('Phase B: Computing parent directories...');}
     
     const P_dirs = new Set();
     
