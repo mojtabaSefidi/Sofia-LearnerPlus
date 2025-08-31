@@ -665,7 +665,7 @@ No developers found with prior experience on these files. Consider assigning rev
   const topWhoDoEntry = metricsWithDefaults.slice().sort((a, b) => (b.whoDoScore || 0) - (a.whoDoScore || 0))[0];
   const topWhoDo = topWhoDoEntry ? topWhoDoEntry.login : '_None_';
 
-  const repoUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}`;
+  const repoUrl = `https://github.com/${github.context.repo.owner}/${github.context.repo.repo}`;
   const workflowDispatchUrl = `${repoUrl}/actions/workflows/manual-assign-reviewer.yml`;
   
   // --- Candidate Reviewers Score table (this will be shown first) ---
