@@ -156,7 +156,8 @@ async function whoDo_suggestion(
       .from('contributions')
       .select('contributor_id, file_id, activity_type, contribution_date')
       // .in('activity_type', ['commit', 'review'])
-      .lt('contribution_date','2025-08-30T20:41:54.000Z')
+      // .lt('contribution_date','2025-08-30T20:41:54.000Z')
+      .range(0, 2999);
 
     if (contribHistErr) {
       console.error('Error fetching all contributions:', contribHistErr);
@@ -186,12 +187,9 @@ async function whoDo_suggestion(
       }
       contribByDevFileActivity.get(key).push(contrib);
     }
-    
-    // Also add this to see all keys in the map
-    console.log('All keys in map:', Array.from(contribByDevFileActivity.keys()));
-    
+        
     const contributionCount = allContributions ? allContributions.length : 0;
-    console.log(`Total contributions found: ${contributionCount}`);
+    console.log(`Total contributions found: ${allContributions.length}`);
 
     // Organize contributions by contributor and file/activity type
     
