@@ -16,7 +16,8 @@ async function whoDo_suggestion(
   C2 = 1.0,
   C3 = 1.0,
   C4 = 1.0,
-  theta = 0.5
+  theta = 0.5,
+  verbos = false
 ) {
   console.log('🔬 Running whoDo_suggestion...');
 
@@ -35,7 +36,7 @@ async function whoDo_suggestion(
 
   try {
     // Phase A: Candidate set & mapping
-    console.log('Phase A: Building candidate set...');
+    if (verbos) {console.log('Phase A: Building candidate set...');}
     
     // Map PR author to contributor id and get all candidates
     const { data: contributors, error: contribErr } = await supabase
@@ -91,15 +92,17 @@ async function whoDo_suggestion(
       return [];
     }
 
-    console.log('✅ Phase A complete');
-    console.log('  Author ID:', authorId);
-    console.log('  Candidate count:', candidatesMap.size);
-    console.log('  Sample candidates:', Array.from(candidatesMap.values()).slice(0, 5));
-    console.log('  PR files:', filePaths);
-    console.log('  F_fileids:', Array.from(F_fileids));
+    if (verbose) {
+      console.log('✅ Phase A complete');
+      console.log('  Author ID:', authorId);
+      console.log('  Candidate count:', candidatesMap.size);
+      console.log('  Sample candidates:', Array.from(candidatesMap.values()).slice(0, 5));
+      console.log('  PR files:', filePaths);
+      console.log('  F_fileids:', Array.from(F_fileids));
+    }
 
     // Phase B: Build P (parent directories) and files in those directories
-    console.log('Phase B: Computing parent directories...');
+    if (verbos) {console.log(console.log('Phase B: Computing parent directories...');}
     
     const P_dirs = new Set();
     
@@ -140,16 +143,16 @@ async function whoDo_suggestion(
       }
     }
 
-
-    console.log('✅ Phase B complete');
-    console.log('  Parent directories:', Array.from(P_dirs));
-    for (const [dir, fileIds] of fileIdsInDirs.entries()) {
-      console.log(`  Dir: ${dir}, File IDs: ${Array.from(fileIds)}`);
+    if (verbose) { 
+      console.log('✅ Phase B complete');
+      console.log('  Parent directories:', Array.from(P_dirs));
+      for (const [dir, fileIds] of fileIdsInDirs.entries()) {
+        console.log(`  Dir: ${dir}, File IDs: ${Array.from(fileIds)}`);
+      }
     }
-
     
     // Phase C: Per-file and per-directory activity counts & recency
-    console.log('Phase C: Computing activity counts and recency...');
+    if (verbose) {console.log('Phase C: Computing activity counts and recency...');}
     
     // Fetch all contributions for scoring (no date restrictions for historical data)
     const { data: allContributions, error: contribHistErr } = await supabase
@@ -203,8 +206,6 @@ async function whoDo_suggestion(
           const tChangeFile = daysDiff(prRefDate, lastChangeDate);
           // Avoid division by zero: tChangeFile is guaranteed >= 1 by daysDiff function
           sumFileCommits += nChangeFile / tChangeFile;
-          console.log(`key: ${commitKey}, commit:${commits}, nChangeFile:${nChangeFile}, tChangeFile:${tChangeFile}, sumFileCommits:${sumFileCommits}`);
-          console.log(`--------File-----------`);
         }
 
         // File reviews
@@ -244,8 +245,6 @@ async function whoDo_suggestion(
         if (nChangeDir > 0 && lastChangeDirDate) {
           const tChangeDir = daysDiff(prRefDate, lastChangeDirDate);
           sumDirCommits += nChangeDir / tChangeDir;
-          console.log(`nChangeFile:${nChangeDir}, tChangeFile:${tChangeDir}, sumFileCommits:${sumDirCommits}`);
-          console.log(`--------DIR-----------`);
         }
       
         // Directory reviews
@@ -285,15 +284,17 @@ async function whoDo_suggestion(
     }
 
 
-    console.log('✅ Phase C complete');
-    console.log('  Contributions grouped:', contribByDevFileActivity.size);
-    for (const [devId, meta] of candidatesMap) {
-      const scoreObj = candidateScores.get(devId);
-      console.log(`  Dev: ${meta.login}, FileCommits=${scoreObj?.sumFileCommits.toFixed(3)}, DirCommits=${scoreObj?.sumDirCommits.toFixed(3)}, FileReviews=${scoreObj?.sumFileReviews.toFixed(3)}, DirReviews=${scoreObj?.sumDirReviews.toFixed(3)}, RawScore=${scoreObj?.score.toFixed(3)}`);
+    if (verbose) {
+      console.log('✅ Phase C complete');
+      console.log('  Contributions grouped:', contribByDevFileActivity.size);
+      for (const [devId, meta] of candidatesMap) {
+        const scoreObj = candidateScores.get(devId);
+        console.log(`  Dev: ${meta.login}, FileCommits=${scoreObj?.sumFileCommits.toFixed(3)}, DirCommits=${scoreObj?.sumDirCommits.toFixed(3)}, FileReviews=${scoreObj?.sumFileReviews.toFixed(3)}, DirReviews=${scoreObj?.sumDirReviews.toFixed(3)}, RawScore=${scoreObj?.score.toFixed(3)}`);
+      }
     }
     
     // Phase E: Compute Load(D)
-    console.log('Phase E: Computing workload...');
+    if (verbose) {console.log('Phase E: Computing workload...');}
     
     // Find overlapping PRs
     const { data: overlappingPRs, error: prErr } = await supabase
@@ -398,16 +399,18 @@ async function whoDo_suggestion(
       }
     }
 
-    console.log('✅ Phase E complete');
-    console.log('  Overlapping PR numbers:', Array.from(overlappingPRNumbers));
-    for (const [devId, load] of loadByDev.entries()) {
-      const login = candidatesMap.get(devId)?.login;
-      console.log(`  Dev: ${login}, OpenReviewPRs=${load}`);
+    if (verbose) {
+      console.log('✅ Phase E complete');
+      console.log('  Overlapping PR numbers:', Array.from(overlappingPRNumbers));
+      for (const [devId, load] of loadByDev.entries()) {
+        const login = candidatesMap.get(devId)?.login;
+        console.log(`  Dev: ${login}, OpenReviewPRs=${load}`);
+      }
     }
 
     
     // Phase F: Final WhoDo score and return top k
-    console.log('Phase F: Computing final scores...');
+    if (verbose) {console.log('Phase F: Computing final scores...');}
     
     const results = [];
     
@@ -432,9 +435,11 @@ async function whoDo_suggestion(
       });
     }
 
-    console.log('✅ Phase F complete');
-    for (const r of results.slice(0, 10)) {
-      console.log(`  Dev: ${r.login}, RawScore=${r.rawScore.toFixed(2)}, Load=${r.load.toFixed(2)}, WhoDoScore=${r.whoDoScore.toFixed(2)}, OpenReviews=${r.totalOpenReviews}`);
+    if (verbose) {
+      console.log('✅ Phase F complete');
+      for (const r of results.slice(0, 10)) {
+        console.log(`  Dev: ${r.login}, RawScore=${r.rawScore.toFixed(2)}, Load=${r.load.toFixed(2)}, WhoDoScore=${r.whoDoScore.toFixed(2)}, OpenReviews=${r.totalOpenReviews}`);
+      }
     }
 
     // Sort by WhoDo score descending and return top k
