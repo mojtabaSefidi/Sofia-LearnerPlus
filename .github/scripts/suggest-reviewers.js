@@ -678,16 +678,45 @@ No developers found with prior experience on these files. Consider assigning rev
       
       candidateScoreSection += `| \`${metrics.login}\` | ${(metrics.cxFactorScore || 0).toFixed(3)} | ${(metrics.turnoverRecScore || 0).toFixed(3)} | ${whoDoScore.toFixed(3)} |\n`;
     });
-
+  
     // Add the requested extra row (Top Candidate, user with highest expertise, user with highest knowledge distribution)
     const topWhoDoEntry = metricsWithDefaults.slice().sort((a, b) => (b.whoDoScore || 0) - (a.whoDoScore || 0))[0];
     const topWhoDo = topWhoDoEntry ? topWhoDoEntry.login : '_None_';
     
-    candidateScoreSection += `| Top Candidate | \`${topExpert}\` | \`${topKD}\` | \`${topWhoDo}\` |\n`;
+    candidateScoreSection += `| **Top Candidate** | \`${topExpert}\` | \`${topKD}\` | \`${topWhoDo}\` |\n`;
+    
+    // Add the new "Assign As Reviewer" row
+    candidateScoreSection += `| **Assign As Reviewer** | \`/assign-reviewer ${topExpert}\` | \`/assign-reviewer ${topKD}\` | \`/assign-reviewer ${topWhoDo}\` |\n`;
+  
   } else {
     candidateScoreSection += `### 📝 Candidate Reviewers Score
   
   _No candidate metrics available for this PR._\n`;
+  }
+  
+  // --- Now create the separate Quick Assign Reviewers table ---
+  let quickAssignSection = '';
+  
+  if (RecommendationScores.length > 0) {
+    // Get unique top candidates
+    const topCandidates = [...new Set([topExpert, topKD, topWhoDo].filter(candidate => candidate && candidate !== '_None_'))];
+    
+    if (topCandidates.length > 0) {
+      quickAssignSection += `\n### 🎯 Quick Assign Reviewers
+  
+  | Top Candidate | Quick Assign Command |
+  |---------------|---------------------|
+  `;
+  
+      topCandidates.forEach(candidate => {
+        quickAssignSection += `| \`${candidate}\` | \`/assign-reviewer ${candidate}\` |\n`;
+      });
+  
+      quickAssignSection += `\n**How to use:**
+  - Copy and paste any command above as a comment on this PR
+  - The reviewer will be automatically assigned
+  - Only the PR author, repository collaborators, members, and owners can assign reviewers\n\n`;
+    }
   }
 
   // --- Build Suggestions section (same logic as before) ---
