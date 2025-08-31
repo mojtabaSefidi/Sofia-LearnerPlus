@@ -687,6 +687,8 @@ No developers found with prior experience on these files. Consider assigning rev
     
     // Add the new "Assign As Reviewer" row
     candidateScoreSection += `| **Assign As Reviewer** | \`/assign-reviewer ${topExpert}\` | \`/assign-reviewer ${topKD}\` | \`/assign-reviewer ${topWhoDo}\` |\n`;
+
+    candidateScoreSection += `\n**To assign reviewers automatically, copy and paste your desired command as a comment on this PR**\n`;
   
   } else {
     candidateScoreSection += `### 📝 Candidate Reviewers Score
@@ -813,7 +815,7 @@ suggestionsSection += `**Recommendation:** Assign **two learners** to distribute
   // Candidate score first
   comment += candidateScoreSection;
 
-  comment += quickAssignSection;
+  // comment += quickAssignSection;
 
   // Suggestions next
   comment += suggestionsSection;
