@@ -178,7 +178,8 @@ async function whoDo_suggestion(
     }
 
     const mapSize = contribByDevFileActivity.size;
-    console.log(`Map: ${contribByDevFileActivity}`);
+    console.log(`Map:`);
+    console.log([...contribByDevFileActivity.entries()]);
     console.log(`Number of unique contributor-file-activity combos: ${mapSize}`);
 
     // Helper function to calculate days difference
