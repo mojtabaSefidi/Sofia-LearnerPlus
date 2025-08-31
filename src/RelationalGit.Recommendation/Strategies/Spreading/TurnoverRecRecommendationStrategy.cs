@@ -14,7 +14,8 @@ namespace RelationalGit.Recommendation
         string _pullRequestReviewerSelectionStrategy;
 
         public TurnoverRecRecommendationStrategy(string knowledgeSaveReviewerReplacementType, 
-            ILogger logger, int? numberOfPeriodsForCalculatingProbabilityOfStay, 
+            ILogger logger,
+            int? numberOfPeriodsForCalculatingProbabilityOfStay, 
             string pullRequestReviewerSelectionStrategy,
             bool? addOnlyToUnsafePullrequests,
             string recommenderOption, bool changePast,

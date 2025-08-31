@@ -661,7 +661,10 @@ No developers found with prior experience on these files. Consider assigning rev
   const topExpert = RecommendationScores.length > 0 ? RecommendationScores[0].login : '_None_';
   const topKDEntry = metricsWithDefaults.slice().sort((a, b) => (b.turnoverRecScore || 0) - (a.turnoverRecScore || 0))[0];
   const topKD = topKDEntry ? topKDEntry.login : '_None_';
-
+  // Add topWhoDo calculation here as well
+  const topWhoDoEntry = metricsWithDefaults.slice().sort((a, b) => (b.whoDoScore || 0) - (a.whoDoScore || 0))[0];
+  const topWhoDo = topWhoDoEntry ? topWhoDoEntry.login : '_None_';
+  
   // --- Candidate Reviewers Score table (this will be shown first) ---
   let candidateScoreSection = '';
   if (RecommendationScores.length > 0) {
@@ -679,10 +682,7 @@ No developers found with prior experience on these files. Consider assigning rev
       candidateScoreSection += `| \`${metrics.login}\` | ${(metrics.cxFactorScore || 0).toFixed(3)} | ${(metrics.turnoverRecScore || 0).toFixed(3)} | ${whoDoScore.toFixed(3)} |\n`;
     });
   
-    // Add the requested extra row (Top Candidate, user with highest expertise, user with highest knowledge distribution)
-    const topWhoDoEntry = metricsWithDefaults.slice().sort((a, b) => (b.whoDoScore || 0) - (a.whoDoScore || 0))[0];
-    const topWhoDo = topWhoDoEntry ? topWhoDoEntry.login : '_None_';
-    
+    // Add the Top Candidate row
     candidateScoreSection += `| **Top Candidate** | \`${topExpert}\` | \`${topKD}\` | \`${topWhoDo}\` |\n`;
     
     // Add the new "Assign As Reviewer" row
@@ -698,7 +698,7 @@ No developers found with prior experience on these files. Consider assigning rev
   let quickAssignSection = '';
   
   if (RecommendationScores.length > 0) {
-    // Get unique top candidates
+    // Get unique top candidates (now all variables are properly defined above)
     const topCandidates = [...new Set([topExpert, topKD, topWhoDo].filter(candidate => candidate && candidate !== '_None_'))];
     
     if (topCandidates.length > 0) {
@@ -812,6 +812,8 @@ suggestionsSection += `**Recommendation:** Assign **two learners** to distribute
 
   // Candidate score first
   comment += candidateScoreSection;
+
+  comment += quickAssignSection;
 
   // Suggestions next
   comment += suggestionsSection;
