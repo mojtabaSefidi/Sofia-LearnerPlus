@@ -163,19 +163,44 @@ async function whoDo_suggestion(
       throw contribHistErr;
     }
 
-    const contributionCount = allContributions ? allContributions.length : 0;
-    console.log(`Total contributions found: ${contributionCount}`);
 
-    // Organize contributions by contributor and file/activity type
-    const contribByDevFileActivity = new Map(); // "devId_fileId_activityType" -> contributions[]
+    // Add this right after your query to see what you're actually getting
+    console.log('Raw query results sample:', allContributions?.slice(0, 3));
+    console.log('First contribution structure:', allContributions?.[0]);
     
+    
+    const contribByDevFileActivity = new Map(); 
+    
+    // Add this inside your for loop to see what keys are being created
     for (const contrib of allContributions || []) {
       const key = `${contrib.contributor_id}_${contrib.file_id}_${contrib.activity_type}`;
+      
+      // Add this debug line to see what keys are actually being created
+      if (key === '292_41720_commit' || key === '292_41779_commit' || key === '297_41779_commit') {
+        console.log('Creating key:', key, 'for contrib:', contrib);
+      }
+      
       if (!contribByDevFileActivity.has(key)) {
         contribByDevFileActivity.set(key, []);
       }
       contribByDevFileActivity.get(key).push(contrib);
     }
+    
+    // Also add this to see all keys in the map
+    console.log('All keys in map:', Array.from(contribByDevFileActivity.keys()));
+    
+    const contributionCount = allContributions ? allContributions.length : 0;
+    console.log(`Total contributions found: ${contributionCount}`);
+
+    // Organize contributions by contributor and file/activity type
+    
+    // for (const contrib of allContributions || []) {
+    //   const key = `${contrib.contributor_id}_${contrib.file_id}_${contrib.activity_type}`;
+    //   if (!contribByDevFileActivity.has(key)) {
+    //     contribByDevFileActivity.set(key, []);
+    //   }
+    //   contribByDevFileActivity.get(key).push(contrib);
+    // }
 
     const mapSize = contribByDevFileActivity.size;
     console.log(`Map:`);
