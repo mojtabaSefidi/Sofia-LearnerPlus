@@ -156,56 +156,25 @@ async function whoDo_suggestion(
       .from('contributions')
       .select('contributor_id, file_id, activity_type, contribution_date')
       .in('activity_type', ['commit', 'review'])
-      .lt('contribution_date','2025-08-30T20:41:54.000Z');
+      .lt('contribution_date', prRefDate.toISOString());
 
     if (contribHistErr) {
       console.error('Error fetching all contributions:', contribHistErr);
       throw contribHistErr;
     }
-
-
-    // Add this right after your query to see what you're actually getting
-    console.log('PR Date:', prRefDate.toISOString());
-    console.log('Raw query results sample:', allContributions?.slice(0, 3));
-    console.log('First contribution structure:', allContributions?.[0]);
-    
     
     const contribByDevFileActivity = new Map(); 
     
-    // Add this inside your for loop to see what keys are being created
+    
     for (const contrib of allContributions || []) {
       const key = `${contrib.contributor_id}_${contrib.file_id}_${contrib.activity_type}`;
-      
-      // Add this debug line to see what keys are actually being created
-      if (key === '292_41720_commit' || key === '292_41779_commit' || key === '297_41779_commit') {
-        console.log('Creating key:', key, 'for contrib:', contrib);
-      }
-      
       if (!contribByDevFileActivity.has(key)) {
         contribByDevFileActivity.set(key, []);
       }
       contribByDevFileActivity.get(key).push(contrib);
     }
-        
-    const contributionCount = allContributions ? allContributions.length : 0;
-    console.log(`Total contributions found: ${allContributions.length}`);
-
-    // Organize contributions by contributor and file/activity type
-    
-    // for (const contrib of allContributions || []) {
-    //   const key = `${contrib.contributor_id}_${contrib.file_id}_${contrib.activity_type}`;
-    //   if (!contribByDevFileActivity.has(key)) {
-    //     contribByDevFileActivity.set(key, []);
-    //   }
-    //   contribByDevFileActivity.get(key).push(contrib);
-    // }
 
     const mapSize = contribByDevFileActivity.size;
-    console.log(`Map:`);
-    console.log(contribByDevFileActivity.get('292_41720_commit'));
-    console.log(contribByDevFileActivity.get('292_41779_commit'));
-    console.log(contribByDevFileActivity.get('297_41779_commit'));
-    console.log(`Number of unique contributor-file-activity combos: ${mapSize}`);
 
     // Helper function to calculate days difference
     const daysDiff = (date1, date2) => {
@@ -228,9 +197,7 @@ async function whoDo_suggestion(
         const commitKey = `${devId}_${fileId}_commit`;
         const commits = contribByDevFileActivity.get(commitKey) || [];
         const nChangeFile = commits.length;
-        console.log(`devID: ${devId}, fileID: ${fileId}, numCommit:${nChangeFile}`);
-        console.log(`-----------`);
-        
+
         if (nChangeFile > 0) {
           const lastChangeDate = new Date(Math.max(...commits.map(c => new Date(c.contribution_date).getTime())));
           const tChangeFile = daysDiff(prRefDate, lastChangeDate);
