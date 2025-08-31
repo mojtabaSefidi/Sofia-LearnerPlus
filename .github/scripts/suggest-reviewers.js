@@ -639,13 +639,16 @@ No developers found with prior experience on these files. Consider assigning rev
   })) : [];
 
   // Utility: pick top candidates (used in suggestions)
-  function pickTopCandidates(primaryKey, tieKey, count = 1) {
+  function pickTopCandidates(primaryKey, secondaryKey, tertiaryKey, count = 1) {
     const candidates = metricsWithDefaults
       .filter(m => m.login !== prAuthor)
       .slice() // copy
       .sort((a, b) => {
         if (b[primaryKey] === a[primaryKey]) {
-          return (b[tieKey] || 0) - (a[tieKey] || 0);
+          if (b[secondaryKey] === a[secondaryKey]) {
+            return (b[tertiaryKey] || 0) - (a[tertiaryKey] || 0);
+          }
+          return (b[secondaryKey] || 0) - (a[secondaryKey] || 0);
         }
         return (b[primaryKey] || 0) - (a[primaryKey] || 0);
       });
@@ -711,10 +714,13 @@ No developers found with prior experience on these files. Consider assigning rev
 
   // Candidate picking functions (respect tie-breakers)
   function pickExpert(count = 1) {
-    return pickTopCandidates('cxFactorScore', 'turnoverRecScore', count);
+    return pickTopCandidates('cxFactorScore', 'whoDoScore', 'turnoverRecScore', count);
   }
   function pickLearner(count = 1) {
-    return pickTopCandidates('turnoverRecScore', 'cxFactorScore', count);
+    return pickTopCandidates('turnoverRecScore', 'cxFactorScore', 'whoDoScore', count);
+  }
+  function pickWorkloadBalancer(count = 1) {
+    return pickTopCandidates('whoDoScore', 'turnoverRecScore', 'cxFactorScore', count);
   }
 
   // Execute suggestions (same content as original)
@@ -768,9 +774,9 @@ suggestionsSection += `**Recommendation:** Assign **two learners** to distribute
     suggestionsSection += `${formatFileList(authorNoCxFiles)}\n\n`;
     suggestionsSection += `**Recommendation:** Assign an **expert reviewer** to reduce defect risk: ${expert.length > 0 ? `\`${expert[0]}\`` : '_No suitable expert found automatically_'}\n\n`;
   } else {
-    const learner = pickLearner(1);
+    const workloadBalancer = pickWorkloadBalancer(1);
     suggestionsSection += `**Observation:** The author has adequate knowledge about the modified codes, so the risk of defects and knowledge loss is low.\n\n`;
-    suggestionsSection += `**Recommendation:** Assign a **learner** to distribute knowledge more broadly among the development team: ${learner.length > 0 ? `\`${learner[0]}\`` : '_No suitable candidate found automatically_'}\n\n`;
+    suggestionsSection += `**Recommendation:** Assign a developer with low workload to avoid overburdening expert reviewers: ${workloadBalancer.length > 0 ? `\`${workloadBalancer[0]}\`` : '_No suitable candidate found automatically_'}\n\n`;
   }
   // --- Assemble final comment: Candidate Score -> Suggestions -> Breakdown (collapsible with PR Analysis & Candidate Records) ---
   let comment = '';
