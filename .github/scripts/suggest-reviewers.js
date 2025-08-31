@@ -666,7 +666,7 @@ No developers found with prior experience on these files. Consider assigning rev
   const topWhoDo = topWhoDoEntry ? topWhoDoEntry.login : '_None_';
 
   const repoUrl = `https://github.com/${github.context.repo.owner}/${github.context.repo.repo}`;
-  const workflowDispatchUrl = `${repoUrl}/actions/workflows/manual-assign-reviewer.yml`;
+  const workflowDispatchUrl = `${repoUrl}/actions/workflows/assign-reviewer-manual.yml`;
   
   // --- Candidate Reviewers Score table (this will be shown first) ---
   let candidateScoreSection = '';
