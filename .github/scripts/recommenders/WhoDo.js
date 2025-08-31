@@ -198,6 +198,10 @@ async function whoDo_suggestion(
         const commits = contribByDevFileActivity.get(commitKey) || [];
         const nChangeFile = commits.length;
 
+        console.log(`key: ${commitKey}, commit:${commits}, nChangeFile:${nChangeFile}`);
+        console.log(`-------------------`);
+        
+
         if (nChangeFile > 0) {
           const lastChangeDate = new Date(Math.max(...commits.map(c => new Date(c.contribution_date).getTime())));
           const tChangeFile = daysDiff(prRefDate, lastChangeDate);
