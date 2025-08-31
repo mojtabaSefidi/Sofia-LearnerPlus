@@ -1,0 +1,43 @@
+name: Manual Assign Reviewer
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Pull Request Number'
+        required: true
+        type: number
+      reviewer:
+        description: 'Reviewer GitHub username'
+        required: true
+        type: string
+
+jobs:
+  assign-reviewer:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        
+      - name: Assign Reviewer to PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Assign the reviewer to the PR
+          gh pr edit ${{ inputs.pr_number }} --add-reviewer "${{ inputs.reviewer }}"
+          
+          # Post a confirmation comment
+          gh pr comment ${{ inputs.pr_number }} --body "🤖 **Reviewer Assigned**: @${{ inputs.reviewer }} has been requested to review this PR via manual workflow dispatch."
+          
+      - name: Handle Assignment Failure
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ inputs.pr_number }} --body "⚠️ **Assignment Failed**: Could not assign @${{ inputs.reviewer }} as a reviewer. Please check if the username is valid and they have repository access."
