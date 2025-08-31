@@ -165,6 +165,7 @@ async function whoDo_suggestion(
 
 
     // Add this right after your query to see what you're actually getting
+    console.log('PR Date:', prRefDate.toISOString());
     console.log('Raw query results sample:', allContributions?.slice(0, 3));
     console.log('First contribution structure:', allContributions?.[0]);
     
