@@ -704,7 +704,7 @@ No developers found with prior experience on these files. Consider assigning rev
     
     **Option 2 - One-Click Workflow:**
     1. Click any 🚀 link above to open the workflow page
-    2. Enter PR number: **${pr.number}**
+    2. Enter PR number: **${github.context.payload.pull_request.number}**
     3. Enter reviewer username (e.g., **${topExpert}**)
     4. Click "Run workflow"
     \n`;
