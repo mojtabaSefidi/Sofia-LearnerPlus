@@ -686,21 +686,7 @@ No developers found with prior experience on these files. Consider assigning rev
     candidateScoreSection += `| **Top Candidate** | \`${topExpert}\` | \`${topKD}\` | \`${topWhoDo}\` |\n`;
     
     // Add the new "Assign As Reviewer" row
-    // Add the new "Assign As Reviewer" row with copyable cells
-    candidateScoreSection += `
-    | **Assign As Reviewer** | <span class="copy-cell" data-text="/assign-reviewer ${topExpert}">/assign-reviewer ${topExpert}</span> | <span class="copy-cell" data-text="/assign-reviewer ${topKD}">/assign-reviewer ${topKD}</span> | <span class="copy-cell" data-text="/assign-reviewer ${topWhoDo}">/assign-reviewer ${topWhoDo}</span> |
-    `;
-    
-    // Later in your JS, after inserting candidateScoreSection into the DOM:
-    document.addEventListener("click", function (e) {
-      if (e.target.classList.contains("copy-cell")) {
-        const text = e.target.getAttribute("data-text");
-        navigator.clipboard.writeText(text).then(() => {
-          alert(`Copied: ${text}`);
-        });
-      }
-    });
-
+    candidateScoreSection += `| **Assign As Reviewer** | \`/assign-reviewer ${topExpert}\` | \`/assign-reviewer ${topKD}\` | \`/assign-reviewer ${topWhoDo}\` |\n`;
   
   } else {
     candidateScoreSection += `### 📝 Candidate Reviewers Score
