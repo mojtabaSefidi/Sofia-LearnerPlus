@@ -207,6 +207,8 @@ async function whoDo_suggestion(
           const tChangeFile = daysDiff(prRefDate, lastChangeDate);
           // Avoid division by zero: tChangeFile is guaranteed >= 1 by daysDiff function
           sumFileCommits += nChangeFile / tChangeFile;
+          console.log(`key: ${commitKey}, commit:${commits}, nChangeFile:${nChangeFile}, tChangeFile:${tChangeFile}, sumFileCommits:${sumFileCommits}`);
+          console.log(`-------------------`);
         }
 
         // File reviews
