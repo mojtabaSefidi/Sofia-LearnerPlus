@@ -4,7 +4,6 @@ using System.Collections.Generic;
 
 namespace RelationalGit.Recommendation
 {
-
     internal class PullRequestKnowledgeDistribution : IComparable<PullRequestKnowledgeDistribution>
     {
         public PullRequestKnowledgeDistributionFactors PullRequestKnowledgeDistributionFactors { get; }
