@@ -13,10 +13,10 @@ namespace RelationalGit.Recommendation
 
         internal override double ComputeReviewerScore(PullRequestContext pullRequestContext, DeveloperKnowledge reviewer)
         {
-            var totalCommits = pullRequestContext.PullRequestKnowledgeables.Sum(q=>q.NumberOfCommits);
+            var totalCommits = pullRequestContext.PullRequestKnowledgeables.Sum(q => q.NumberOfCommits);
             var totalReviews = pullRequestContext.PullRequestKnowledgeables.Sum(q => q.NumberOfReviews);
 
-            if (totalCommits + totalReviews ==0)
+            if (totalCommits + totalReviews == 0)
             {
                 return 0;
             }
