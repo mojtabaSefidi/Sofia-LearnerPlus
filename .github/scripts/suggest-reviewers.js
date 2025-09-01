@@ -819,10 +819,10 @@ No developers found with prior experience on these files. Consider assigning rev
     if (hoardedFiles.length > 0) {
       suggestionsSection += `**Hoarded files:**\n${formatFileList(hoardedFiles)}\n\n`;
     }
-    suggestionsSection += `**Recommendation:** Assign **two learners** to distribute knowledge more broadly:\n` 
+    suggestionsSection += `**Recommendation:** Assign **two learners** to distribute knowledge more broadly.\n` 
     if (learners.length > 0) {
       for (let i = 0; i < learners.length; i++) {
-        suggestionsSection += `\n
+        suggestionsSection += `\n Assign <code>${learners[i]}</code>:\n
         /assign-reviewer ${learners[i]}
         \n`;
       }
@@ -834,9 +834,9 @@ No developers found with prior experience on these files. Consider assigning rev
     const learner = pickLearner(1);
     suggestionsSection += `**Observation:** There exist **${hoardedCount} hoarded** file(s) in this PR:\n\n`;
     suggestionsSection += `${formatFileList(hoardedFiles)}\n\n`;
-    suggestionsSection += `**Recommendation:** Assign a **learner** to distribute knowledge:\n`
+    suggestionsSection += `**Recommendation:** Assign a **learner** to distribute knowledge.\n`
     if (learner.length > 0) {
-      suggestionsSection += `\n
+      suggestionsSection += `\n Assign <code>${learner[0]}</code>:\n
       
       /assign-reviewer ${learner[0]}
       \n`;
@@ -849,7 +849,7 @@ No developers found with prior experience on these files. Consider assigning rev
     const expert = pickExpert(1);
     suggestionsSection += `**Observation:** The author has **no prior experience** on these file(s):\n\n`;
     suggestionsSection += `${formatFileList(authorNoCxFiles)}\n\n`;
-    suggestionsSection += `**Recommendation:** Assign an **expert reviewer** to reduce defect risk:\n`
+    suggestionsSection += `**Recommendation:** Assign an **expert reviewer** to reduce defect risk.\n`
     if (expert.length > 0) {
       suggestionsSection += `\n
       
@@ -863,7 +863,7 @@ No developers found with prior experience on these files. Consider assigning rev
     suggestionsSection += `**Observation:** The author has adequate knowledge about the modified codes, so the risk of defects and knowledge loss is low.\n\n`;
     suggestionsSection += `**Recommendation:** Assign a developer with a low workload to avoid overburdening expert reviewers:\n`
     if (workloadBalancer.length > 0) {
-      suggestionsSection += `\n
+      suggestionsSection += `\n Assign <code>${workloadBalancer[0]}</code>:\n
       
       /assign-reviewer ${workloadBalancer[0]}
       \n`;
