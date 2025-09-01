@@ -696,20 +696,17 @@ No developers found with prior experience on these files. Consider assigning rev
     
     candidateScoreSection += `\n**<h5>Assignment Options. Assign a reviewer by posting the following commands as a comment on this PR.</h5>**`
     
-    candidateScoreSection += `\n Assign \`${topExpert}\`:
+    // Collect all possible candidates
+    const uniqueCandidates = [...new Set([topExpert, topKD, topWhoDo])];
     
-    /assign-reviewer ${topExpert}
-    \n`;
+    // Build assignment options
+    uniqueCandidates.forEach(candidate => {
+      candidateScoreSection += `\n Assign \`${candidate}\`:
+      
+      /assign-reviewer ${candidate}
+      \n`;
+    });
 
-    candidateScoreSection += `\n Assign \`${topKD}\`:
-    
-    /assign-reviewer ${topKD}
-    \n`;
-
-    candidateScoreSection += `\n Assign \`${topWhoDo}\`:
-    
-    /assign-reviewer ${topWhoDo}
-    \n`;
 
   
   } else {
