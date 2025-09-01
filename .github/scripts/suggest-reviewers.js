@@ -689,29 +689,28 @@ No developers found with prior experience on these files. Consider assigning rev
     candidateScoreSection += `| **Top Candidate** | \`${topExpert}\` | \`${topKD}\` | \`${topWhoDo}\` |\n`;
     
     // Add the copy/paste command row
-    candidateScoreSection += `| **Copy & Paste Command** | \`/assign-reviewer ${topExpert}\` | \`/assign-reviewer ${topKD}\` | \`/assign-reviewer ${topWhoDo}\` |\n`;
+    // candidateScoreSection += `| **Copy & Paste Command** | \`/assign-reviewer ${topExpert}\` | \`/assign-reviewer ${topKD}\` | \`/assign-reviewer ${topWhoDo}\` |\n`;
     
     // Add the workflow dispatch row
-    candidateScoreSection += `| **One-Click Assignment** | [🚀 Assign ${topExpert}](${workflowDispatchUrl}) | [🚀 Assign ${topKD}](${workflowDispatchUrl}) | [🚀 Assign ${topWhoDo}](${workflowDispatchUrl}) |\n`;
+    // candidateScoreSection += `| **One-Click Assignment** | [🚀 Assign ${topExpert}](${workflowDispatchUrl}) | [🚀 Assign ${topKD}](${workflowDispatchUrl}) | [🚀 Assign ${topWhoDo}](${workflowDispatchUrl}) |\n`;
     
-    candidateScoreSection += `\n**Assignment Options:**
+    candidateScoreSection += `\n**<h5>Assignment Options. Assign a reviewer by posting the following commands as a comment on this PR.</h5>**`
+    
+    candidateScoreSection += `\n Assign \`${topExpert}\`:
     
     /assign-reviewer ${topExpert}
     \n`;
-    // **Option 1 - Copy & Paste (Fastest):**
-    // Copy any command above and paste it as a comment on this PR:
-    // - \`/assign-reviewer ${topExpert}\` (Expertise)
-    // - \`/assign-reviewer ${topKD}\` (Knowledge Distribution)  
-    // - \`/assign-reviewer ${topWhoDo}\` (Workload Balancing)
-    
-    // **Option 2 - One-Click Workflow:**
-    // 1. Click any 🚀 link above to open the workflow page
-    // 2. Enter PR number: **${github.context.payload.pull_request.number}**
-    // 3. Enter reviewer username (e.g., **${topExpert}**)
-    // 4. Click "Run workflow"
-    
 
-    // candidateScoreSection += `\n**To assign reviewers automatically, copy and paste your desired command as a comment on this PR**\n`;
+    candidateScoreSection += `\n Assign \`${topKD}\`:
+    
+    /assign-reviewer ${topKD}
+    \n`;
+
+    candidateScoreSection += `\n Assign \`${topWhoDo}\`:
+    
+    /assign-reviewer ${topWhoDo}
+    \n`;
+
   
   } else {
     candidateScoreSection += `### 📝 Candidate Reviewers Score
