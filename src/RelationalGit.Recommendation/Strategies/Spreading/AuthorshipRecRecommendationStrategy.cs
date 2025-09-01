@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+// imports﻿
+using Microsoft.Extensions.Logging;
 using RelationalGit.Simulation;
 using System.Linq;
 
@@ -7,7 +8,7 @@ namespace RelationalGit.Recommendation
     public class AuthorshipRecRecommendationStrategy : ScoreBasedRecommendationStrategy
     {
         public AuthorshipRecRecommendationStrategy(string knowledgeSaveReviewerReplacementType, ILogger logger, string pullRequestReviewerSelectionStrategy, bool? addOnlyToUnsafePullrequests, string recommenderOption, bool changePast, string simulationType)
-            : base(knowledgeSaveReviewerReplacementType, logger, pullRequestReviewerSelectionStrategy, addOnlyToUnsafePullrequests,recommenderOption, changePast, simulationType)
+            : base(knowledgeSaveReviewerReplacementType, logger, pullRequestReviewerSelectionStrategy, addOnlyToUnsafePullrequests, recommenderOption, changePast, simulationType)
         {
         }
 

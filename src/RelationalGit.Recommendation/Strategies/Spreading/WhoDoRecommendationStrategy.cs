@@ -108,7 +108,6 @@ namespace RelationalGit.Recommendation
             double final_score_noload = Convert.ToDouble(review_score + commit_score + neighber_commit_score + neighber_review_score);
             
             return final_score;
-
         }
 
         private long GetLoadScore(PullRequestContext pullRequestContext, DeveloperKnowledge reviewer)
