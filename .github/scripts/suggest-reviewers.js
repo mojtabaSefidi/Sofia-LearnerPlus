@@ -694,14 +694,14 @@ No developers found with prior experience on these files. Consider assigning rev
     // Add the workflow dispatch row
     // candidateScoreSection += `| **One-Click Assignment** | [🚀 Assign ${topExpert}](${workflowDispatchUrl}) | [🚀 Assign ${topKD}](${workflowDispatchUrl}) | [🚀 Assign ${topWhoDo}](${workflowDispatchUrl}) |\n`;
     
-    candidateScoreSection += `\n**<h5>Assignment Options. Assign a reviewer by posting the following commands as a comment on this PR.</h5>**`
+    candidateScoreSection += `\n\n**<h4>Assignment Options: Assign a reviewer by posting the following commands as a comment on this PR.</h4>**`
     
     // Collect all possible candidates
     const uniqueCandidates = [...new Set([topExpert, topKD, topWhoDo])];
     
     // Build assignment options
     uniqueCandidates.forEach(candidate => {
-      candidateScoreSection += `\n Assign \`${candidate}\`:
+      candidateScoreSection += `Assign \`${candidate}\`:
       
       /assign-reviewer ${candidate}
       \n`;
@@ -826,7 +826,14 @@ suggestionsSection += `**Recommendation:** Assign **two learners** to distribute
   } else {
     const workloadBalancer = pickWorkloadBalancer(1);
     suggestionsSection += `**Observation:** The author has adequate knowledge about the modified codes, so the risk of defects and knowledge loss is low.\n\n`;
-    suggestionsSection += `**Recommendation:** Assign a developer with low workload to avoid overburdening expert reviewers: ${workloadBalancer.length > 0 ? `\`${workloadBalancer[0]}\`` : '_No suitable candidate found automatically_'}\n\n`;
+    suggestionsSection += `**Recommendation:** Assign a developer with a low workload to avoid overburdening expert reviewers:`
+    if (workloadBalancer.length > 0) {
+      candidateScoreSection += `\n Assign \`${workloadBalancer[0]}\`:
+      /assign-reviewer ${workloadBalancer[0]}
+      \n`;
+    } else {
+      candidateScoreSection += `\n _No suitable candidate found automatically_\n`;    
+    }
   }
   // --- Assemble final comment: Candidate Score -> Suggestions -> Breakdown (collapsible with PR Analysis & Candidate Records) ---
   let comment = '';
