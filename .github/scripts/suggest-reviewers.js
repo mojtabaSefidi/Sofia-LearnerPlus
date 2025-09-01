@@ -820,7 +820,7 @@ No developers found with prior experience on these files. Consider assigning rev
       suggestionsSection += `**Hoarded files:**\n${formatFileList(hoardedFiles)}\n\n`;
     }
     suggestionsSection += `**Recommendation:** Assign **two learners** to distribute knowledge more broadly:\n` 
-    if (learner.length > 0) {
+    if (learners.length > 0) {
       for (let i = 0; i < learner.length; i++) {
         suggestionsSection += `\n
         /assign-reviewer ${learner[i]}
