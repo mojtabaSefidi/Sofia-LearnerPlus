@@ -828,11 +828,12 @@ suggestionsSection += `**Recommendation:** Assign **two learners** to distribute
     suggestionsSection += `**Observation:** The author has adequate knowledge about the modified codes, so the risk of defects and knowledge loss is low.\n\n`;
     suggestionsSection += `**Recommendation:** Assign a developer with a low workload to avoid overburdening expert reviewers:`
     if (workloadBalancer.length > 0) {
-      candidateScoreSection += `\n Assign \`${workloadBalancer[0]}\`:
+      suggestionsSection += `\n Assign \`${workloadBalancer[0]}\`:
+      
       /assign-reviewer ${workloadBalancer[0]}
       \n`;
     } else {
-      candidateScoreSection += `\n _No suitable candidate found automatically_\n`;    
+      suggestionsSection += `\n _No suitable candidate found automatically_\n`;    
     }
   }
   // --- Assemble final comment: Candidate Score -> Suggestions -> Breakdown (collapsible with PR Analysis & Candidate Records) ---
