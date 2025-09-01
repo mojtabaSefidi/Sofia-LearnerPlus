@@ -701,7 +701,7 @@ No developers found with prior experience on these files. Consider assigning rev
     
     // Build assignment options
     uniqueCandidates.forEach(candidate => {
-      candidateScoreSection += `Assign \`${candidate}\`:
+      candidateScoreSection += `Assign <code>${candidate}</code>:\n
       
       /assign-reviewer ${candidate}
       \n`;
