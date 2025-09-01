@@ -816,19 +816,36 @@ suggestionsSection += `**Recommendation:** Assign **two learners** to distribute
     const learner = pickLearner(1);
     suggestionsSection += `**Observation:** There exist **${hoardedCount} hoarded** file(s) in this PR:\n\n`;
     suggestionsSection += `${formatFileList(hoardedFiles)}\n\n`;
-    suggestionsSection += `**Recommendation:** Assign a **learner** to distribute knowledge: ${learner.length > 0 ? `\`${learner[0]}\`` : '_No suitable candidate found automatically_'}\n\n`;
+    suggestionsSection += `**Recommendation:** Assign a **learner** to distribute knowledge:\n`
+    if (learner.length > 0) {
+      suggestionsSection += `\n
+      
+      /assign-reviewer ${learner[0]}
+      \n`;
+    } else {
+      suggestionsSection += `\n _No suitable candidate found_\n`;   
+    }
+    
   } else if (hasCondition1) {
     // Condition 1: author lacks experience on some files (CxFactor 0), but no abandoned/hoarded major issue
     const expert = pickExpert(1);
     suggestionsSection += `**Observation:** The author has **no prior experience** on these file(s):\n\n`;
     suggestionsSection += `${formatFileList(authorNoCxFiles)}\n\n`;
-    suggestionsSection += `**Recommendation:** Assign an **expert reviewer** to reduce defect risk: ${expert.length > 0 ? `\`${expert[0]}\`` : '_No suitable expert found automatically_'}\n\n`;
-  } else {
+    suggestionsSection += `**Recommendation:** Assign an **expert reviewer** to reduce defect risk:\n`
+    if (expert.length > 0) {
+      suggestionsSection += `\n
+      
+      /assign-reviewer ${expert[0]}
+      \n`;
+    } else {
+      suggestionsSection += `\n _No suitable expert found_\n`;   
+    } 
+  else {
     const workloadBalancer = pickWorkloadBalancer(1);
     suggestionsSection += `**Observation:** The author has adequate knowledge about the modified codes, so the risk of defects and knowledge loss is low.\n\n`;
-    suggestionsSection += `**Recommendation:** Assign a developer with a low workload to avoid overburdening expert reviewers:`
+    suggestionsSection += `**Recommendation:** Assign a developer with a low workload to avoid overburdening expert reviewers:\n`
     if (workloadBalancer.length > 0) {
-      suggestionsSection += `\n Assign \`${workloadBalancer[0]}\`:
+      suggestionsSection += `\n
       
       /assign-reviewer ${workloadBalancer[0]}
       \n`;
