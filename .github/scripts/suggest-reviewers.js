@@ -156,7 +156,7 @@ async function suggestReviewers() {
         1.0,             // C3
         1.0,             // C4
         0.5,             // theta
-        false            // verbose
+        true            // verbose
         
       );
     } catch (err) {
