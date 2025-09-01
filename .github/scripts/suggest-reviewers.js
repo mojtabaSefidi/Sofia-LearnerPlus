@@ -821,9 +821,9 @@ No developers found with prior experience on these files. Consider assigning rev
     }
     suggestionsSection += `**Recommendation:** Assign **two learners** to distribute knowledge more broadly:\n` 
     if (learners.length > 0) {
-      for (let i = 0; i < learner.length; i++) {
+      for (let i = 0; i < learners.length; i++) {
         suggestionsSection += `\n
-        /assign-reviewer ${learner[i]}
+        /assign-reviewer ${learners[i]}
         \n`;
       }
     } else {
