@@ -54,17 +54,73 @@ async function processPullRequestEvent(context) {
   
   console.log(`📋 Processing PR #${pr.number} - Action: ${action}, State: ${pr.state}`);
   
-  if (action === 'closed' && pr.merged) {
+  if (action === 'opened') {
+  console.log(`📝 PR #${pr.number} was opened, creating initial record...`);
+  await processOpenedPR(pr);
+  
+  } else if (action === 'closed' && pr.merged) {
     console.log(`🔀 PR #${pr.number} was merged, processing...`);
     await processMergedPR(pr);
+  
   } else if (action === 'reopened') {
     console.log(`🔄 PR #${pr.number} was reopened, checking for updates...`);
     await processReopenedPR(pr);
+  
   } else if (action === 'closed' && !pr.merged) {
-    console.log(`❌ PR #${pr.number} was closed without merging, updating status...`);
-    await updatePRStatus(pr, 'closed');
+    console.log(`❌ PR #${pr.number} was closed without merging, processing...`);
+    await processClosedPR(pr);
   }
 }
+
+async function processOpenedPR(pr) {
+  try {
+    const token = process.env.GITHUB_TOKEN || core.getInput('github-token') || core.getInput('token');
+    
+    if (!token) {
+      console.warn('⚠️ No GitHub token available for opened PR processing');
+      return;
+    }
+    
+    const octokit = github.getOctokit(token);
+    
+    // Get PR files to calculate lines modified
+    const { data: files } = await octokit.rest.pulls.listFiles({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      pull_number: pr.number
+    });
+    
+    const totalLinesModified = files.reduce((total, file) => {
+      return total + (file.additions || 0) + (file.deletions || 0);
+    }, 0);
+    
+    // Insert initial PR record
+    const { error } = await supabase
+      .from('pull_requests')
+      .insert({
+        pr_number: pr.number,
+        status: 'open',
+        author_login: pr.user.login,
+        reviewers: [],
+        created_date: new Date(pr.created_at),
+        merged_date: null,
+        closed_date: null,
+        lines_modified: totalLinesModified
+      });
+      
+    if (error) {
+      console.error('Error inserting opened PR:', error);
+      throw error;
+    }
+    
+    console.log(`✅ PR #${pr.number} initial record created - Author: ${pr.user.login}, Lines: ${totalLinesModified}`);
+    
+  } catch (error) {
+    console.error(`❌ FAILED to process opened PR #${pr.number}:`, error.message);
+    throw error;
+  }
+}
+
 
 async function processCommitWithLogs(commitSha) {
   try {
@@ -301,45 +357,140 @@ async function processMergedPR(pr) {
 
 async function processReopenedPR(pr) {
   try {
+    // Update PR status to 'open' and reset closed/merged dates
+    const { error } = await supabase
+      .from('pull_requests')
+      .update({ 
+        status: 'open',
+        closed_date: null,
+        merged_date: null
+        // Keep original created_date unchanged
+      })
+      .eq('pr_number', pr.number);
+      
+    if (error) {
+      console.warn(`Could not update reopened PR #${pr.number}: ${error.message}`);
+    } else {
+      console.log(`✅ Updated PR #${pr.number} status to: open (reopened)`);
+    }
+    
+  } catch (error) {
+    console.error(`❌ FAILED to process reopened PR #${pr.number}:`, error.message);
+    throw error;
+  }
+}
+
+async function processClosedPR(pr) {
+  try {
     const token = process.env.GITHUB_TOKEN || core.getInput('github-token') || core.getInput('token');
     
     if (!token) {
-      console.warn('⚠️ No GitHub token available for reopened PR processing');
+      console.warn('⚠️ No GitHub token available for closed PR processing');
       return;
     }
     
     const octokit = github.getOctokit(token);
-    console.log(`🔄 Checking for new reviews and comments in reopened PR #${pr.number}...`);
     
-    // Get existing review comments from database
-    const { data: existingComments } = await supabase
-      .from('review_comments')
-      .select('comment_date, comment_text, contributor_id')
-      .eq('pr_number', pr.number);
-    
-    // Get current comments from GitHub
-    const currentComments = await processPRComments(pr, octokit);
-    
-    // Filter out existing comments
-    const newComments = currentComments.filter(comment => {
-      return !existingComments.some(existing => 
-        existing.comment_text === comment.comment_text &&
-        new Date(existing.comment_date).getTime() === comment.comment_date.getTime()
-      );
+    // Get reviewers
+    const { data: reviews } = await octokit.rest.pulls.listReviews({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      pull_number: pr.number
     });
     
-    if (newComments.length > 0) {
-      await insertReviewComments(newComments);
-      console.log(`✅ Added ${newComments.length} new review comments to reopened PR #${pr.number}`);
-    } else {
-      console.log(`ℹ️ No new comments found in reopened PR #${pr.number}`);
+    const uniqueReviewers = reviews
+      .filter(review => review.user.login !== pr.user.login)
+      .map(review => review.user.login)
+      .filter((login, index, self) => self.indexOf(login) === index);
+    
+    const reviewerObjects = uniqueReviewers.map(login => ({ login }));
+    
+    // 1. Update PR status and closed date
+    await supabase
+      .from('pull_requests')
+      .update({ 
+        status: 'closed',
+        closed_date: new Date(pr.closed_at),
+        reviewers: reviewerObjects
+      })
+      .eq('pr_number', pr.number);
+    
+    console.log(`✅ Updated PR #${pr.number} status to closed`);
+    
+    // 2. Process comments
+    const comments = await processPRComments(pr, octokit);
+    if (comments.length > 0) {
+      await insertReviewComments(comments);
+      console.log(`✅ Processed ${comments.length} review comments`);
     }
     
-    // Update PR status to 'open'
-    await updatePRStatus(pr, 'open');
+    // 3. Process files
+    const { data: files } = await octokit.rest.pulls.listFiles({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      pull_number: pr.number
+    });
+    
+    for (const file of files) {
+      await getOrCreateFile(file.filename);
+    }
+    
+    // 4. Process commits and reviews
+    const { data: prCommits } = await octokit.rest.pulls.listCommits({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      pull_number: pr.number,
+      per_page: 100
+    });
+    
+    // Process individual commits (skip merge commits)
+    let processedCommits = 0;
+    for (const commit of prCommits) {
+      if (commit.commit.message && commit.commit.message.startsWith('Merge ')) {
+        continue; // Skip merge commits
+      }
+      
+      try {
+        await processCommitWithLogs(commit.sha);
+        processedCommits++;
+      } catch (error) {
+        console.warn(`⚠️ Could not process commit ${commit.sha.substring(0, 8)}: ${error.message}`);
+      }
+    }
+    
+    // Process review contributions
+    let reviewContributions = 0;
+    for (const review of reviews) {
+      if (review.user.login !== pr.user.login) {
+        const reviewer = await getOrCreateContributorByLogin(review.user.login);
+        
+        for (const file of files) {
+          const fileRecord = await getOrCreateFile(file.filename);
+          if (!fileRecord) continue;
+          
+          const fileLinesModified = (file.additions || 0) + (file.deletions || 0);
+          
+          await recordContribution({
+            contributor_id: reviewer.id,
+            file_id: fileRecord.id,
+            activity_type: 'review',
+            activity_id: pr.number.toString(),
+            contribution_date: new Date(review.submitted_at),
+            lines_added: 0,
+            lines_deleted: 0,
+            lines_modified: fileLinesModified,
+            pr_number: pr.number
+          });
+          
+          reviewContributions++;
+        }
+      }
+    }
+    
+    console.log(`✅ Processed ${processedCommits} commits and ${reviewContributions} review contributions for closed PR #${pr.number}`);
     
   } catch (error) {
-    console.error(`❌ FAILED to process reopened PR #${pr.number}:`, error.message);
+    console.error(`❌ FAILED to process closed PR #${pr.number}:`, error.message);
     throw error;
   }
 }
