@@ -696,18 +696,20 @@ No developers found with prior experience on these files. Consider assigning rev
     
     candidateScoreSection += `\n**Assignment Options:**
     
-    **Option 1 - Copy & Paste (Fastest):**
-    Copy any command above and paste it as a comment on this PR:
-    - \`/assign-reviewer ${topExpert}\` (Expertise)
-    - \`/assign-reviewer ${topKD}\` (Knowledge Distribution)  
-    - \`/assign-reviewer ${topWhoDo}\` (Workload Balancing)
-    
-    **Option 2 - One-Click Workflow:**
-    1. Click any 🚀 link above to open the workflow page
-    2. Enter PR number: **${github.context.payload.pull_request.number}**
-    3. Enter reviewer username (e.g., **${topExpert}**)
-    4. Click "Run workflow"
+    \`/assign-reviewer ${topExpert}\
     \n`;
+    // **Option 1 - Copy & Paste (Fastest):**
+    // Copy any command above and paste it as a comment on this PR:
+    // - \`/assign-reviewer ${topExpert}\` (Expertise)
+    // - \`/assign-reviewer ${topKD}\` (Knowledge Distribution)  
+    // - \`/assign-reviewer ${topWhoDo}\` (Workload Balancing)
+    
+    // **Option 2 - One-Click Workflow:**
+    // 1. Click any 🚀 link above to open the workflow page
+    // 2. Enter PR number: **${github.context.payload.pull_request.number}**
+    // 3. Enter reviewer username (e.g., **${topExpert}**)
+    // 4. Click "Run workflow"
+    
 
     // candidateScoreSection += `\n**To assign reviewers automatically, copy and paste your desired command as a comment on this PR**\n`;
   
@@ -838,9 +840,6 @@ suggestionsSection += `**Recommendation:** Assign **two learners** to distribute
 
   // comment += quickAssignSection;
 
-  // Suggestions next
-  comment += suggestionsSection;
-
   // Polished sentence before breakdown
   comment += `\n---\nYou can view detailed additional information about the candidate reviewers by clicking on the title of the section below.\n\n`;
 
@@ -848,6 +847,8 @@ suggestionsSection += `**Recommendation:** Assign **two learners** to distribute
   comment += `<details>\n<summary><h3>📊 Pull Request Detailed Analysis:</h3></summary>\n\n`;
   comment += prAnalysisSection;
   comment += candidateRecordsSection;
+  // Suggestions
+  comment += suggestionsSection;
   comment += `\n</details>\n`;
 
   return comment;
