@@ -694,7 +694,7 @@ No developers found with prior experience on these files. Consider assigning rev
     // Add the workflow dispatch row
     // candidateScoreSection += `| **One-Click Assignment** | [🚀 Assign ${topExpert}](${workflowDispatchUrl}) | [🚀 Assign ${topKD}](${workflowDispatchUrl}) | [🚀 Assign ${topWhoDo}](${workflowDispatchUrl}) |\n`;
     
-    candidateScoreSection += `\n\n**<h4>Assignment Options: Assign a reviewer by posting the following commands as a comment on this PR.</h4>**`
+    candidateScoreSection += `\n\n<h4>Assignment Options: Assign a reviewer by posting the following commands as a comment on this PR.</h4>`
     
     // Collect all possible candidates
     const uniqueCandidates = [...new Set([topExpert, topKD, topWhoDo])];
