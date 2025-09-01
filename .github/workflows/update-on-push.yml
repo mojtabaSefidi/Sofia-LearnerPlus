@@ -5,7 +5,7 @@ on:
   push:
     branches: [main, master]
   pull_request:
-    types: [closed, reopened]
+    types: [opened, closed, reopened]
 
 jobs:
   update-data:
