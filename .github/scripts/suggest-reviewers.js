@@ -790,15 +790,24 @@ No developers found with prior experience on these files. Consider assigning rev
     }
     suggestionsSection += `**Recommendation:** Assign **two reviewers**:\n`;
     if (learners.length > 0) {
-      suggestionsSection += `  - A committed **learner** to distribute knowledge: ${learners.length > 0 ? learners.map(l => `\`${l}\``).join(', ') : '_No suitable learner candidate found automatically_'}\n`;
+      suggestionsSection += `  - A committed **learner** to distribute knowledge:\n`
+      suggestionsSection += `\n
+      
+      /assign-reviewer ${learner[0]}
+      \n`;
 
     } else {
-      suggestionsSection += `  - No suitable learner candidate found automatically — please assign a learner manually.\n`;
+      suggestionsSection += `  - No suitable learner candidate found.\n`;
     }
     if (experts.length > 0) {
-      suggestionsSection += `  - An **expert reviewer** to ensure safety: ${experts.length > 0 ? experts.map(e => `\`${e}\``).join(', ') : '_No suitable expert found automatically_'}\n`;
+      suggestionsSection += `  - An **expert reviewer** to ensure defect detection:\n`
+      suggestionsSection += `\n
+      
+      /assign-reviewer ${experts[0]}
+      \n`;
+      
     } else {
-      suggestionsSection += `  - No suitable expert candidate found automatically — please assign an expert manually.\n`;
+      suggestionsSection += `  - No suitable expert candidate found.\n`;
     }
   } else if (hasCondition3) {
     // Condition 3: abandoned files exist OR more than 50% hoarded -> assign two learners
@@ -810,7 +819,16 @@ No developers found with prior experience on these files. Consider assigning rev
     if (hoardedFiles.length > 0) {
       suggestionsSection += `**Hoarded files:**\n${formatFileList(hoardedFiles)}\n\n`;
     }
-suggestionsSection += `**Recommendation:** Assign **two learners** to distribute knowledge more broadly: ${learners.length > 0 ? learners.map(l => `\`${l}\``).join(', ') : '_No suitable candidates found automatically_'}\n\n`;
+    suggestionsSection += `**Recommendation:** Assign **two learners** to distribute knowledge more broadly:\n` 
+    if (learner.length > 0) {
+      for (let i = 0; i < learner.length; i++) {
+        suggestionsSection += `\n
+        /assign-reviewer ${learner[i]}
+        \n`;
+      }
+    } else {
+      suggestionsSection += `\n _No suitable candidate found_\n`;   
+    }    
   } else if (hasCondition2) {
     // Condition 2: hoarded files exist and <=50% -> assign single learner
     const learner = pickLearner(1);
@@ -839,8 +857,8 @@ suggestionsSection += `**Recommendation:** Assign **two learners** to distribute
       \n`;
     } else {
       suggestionsSection += `\n _No suitable expert found_\n`;   
-    } 
-  else {
+    }
+  } else {
     const workloadBalancer = pickWorkloadBalancer(1);
     suggestionsSection += `**Observation:** The author has adequate knowledge about the modified codes, so the risk of defects and knowledge loss is low.\n\n`;
     suggestionsSection += `**Recommendation:** Assign a developer with a low workload to avoid overburdening expert reviewers:\n`
