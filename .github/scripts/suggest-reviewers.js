@@ -696,7 +696,7 @@ No developers found with prior experience on these files. Consider assigning rev
     
     candidateScoreSection += `\n**Assignment Options:**
     
-    \`/assign-reviewer ${topExpert}\
+    /assign-reviewer ${topExpert}
     \n`;
     // **Option 1 - Copy & Paste (Fastest):**
     // Copy any command above and paste it as a comment on this PR:
