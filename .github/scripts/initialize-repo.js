@@ -22,8 +22,8 @@ async function initializeRepository() {
     const commitData = await processCommits();
     
     // Step 3: Combine all contributor data and handle duplicates
-    console.log('👥 Handling contributors and duplicates...');
-    await handleContributorsWithDuplicates([...prData.contributors, ...commitData.contributors]);
+    // console.log('👥 Handling contributors and duplicates...');
+    // await handleContributorsWithDuplicates([...prData.contributors, ...commitData.contributors]);
     
     // Step 4: Insert files
     console.log('📁 Inserting files...');
