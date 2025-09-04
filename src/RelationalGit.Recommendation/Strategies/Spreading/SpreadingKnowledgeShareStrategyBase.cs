@@ -54,6 +54,7 @@ namespace RelationalGit.Recommendation
         internal PullRequestKnowledgeDistribution GetBestDistribution(List<PullRequestKnowledgeDistribution> simulationResults)
         {
             var maxScore = simulationResults.Max(q => q.PullRequestKnowledgeDistributionFactors.Score);
+            
             return simulationResults.First(q => q.PullRequestKnowledgeDistributionFactors.Score == maxScore);
         }
 

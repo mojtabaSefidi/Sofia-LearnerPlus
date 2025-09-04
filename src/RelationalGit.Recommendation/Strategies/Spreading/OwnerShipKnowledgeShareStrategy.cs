@@ -1,10 +1,9 @@
-﻿using Microsoft.Extensions.Logging;
-using RelationalGit.Simulation;
-using System.Linq;
-
-using RelationalGit.Data;
 using System;
+using System.Linq;
+using RelationalGit.Data;
+using RelationalGit.Simulation;
 using System.Collections.Generic;
+﻿using Microsoft.Extensions.Logging;
 
 namespace RelationalGit.Recommendation
 {
@@ -36,9 +35,11 @@ namespace RelationalGit.Recommendation
             {
                 return 0;
             }
+            
             var score = reviewer.NumberOfCommits / (double)totalCommits + reviewer.NumberOfReviews / (double)totalReviews;
             return score;
         }
+        
         private long GetLoadScore(PullRequestContext pullRequestContext, DeveloperKnowledge reviewer)
         {
             var reviwes = new List<long>();
