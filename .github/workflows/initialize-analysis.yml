@@ -8,11 +8,47 @@ on:
         description: 'Force re-initialization (will clear existing data)'
         required: false
         default: 'false'
+  issue_comment:
+    types: [created]
 
 jobs:
-  initialize:
+  check-trigger:
     runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - name: Check Comment Trigger
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "Triggered manually"
+          elif [ "${{ github.event_name }}" = "issue_comment" ]; then
+            comment="${{ github.event.comment.body }}"
+            if [[ "$comment" =~ @[Ss]ofiabot[[:space:]]+[Ii]nitialize ]]; then
+              # Check if commenter is owner or collaborator
+              author_association="${{ github.event.comment.author_association }}"
+              if [[ "$author_association" == "OWNER" || "$author_association" == "MEMBER" || "$author_association" == "COLLABORATOR" ]]; then
+                echo "should_run=true" >> $GITHUB_OUTPUT
+                echo "Triggered by authorized comment: $comment"
+              else
+                echo "should_run=false" >> $GITHUB_OUTPUT
+                echo "Comment author not authorized: $author_association"
+              fi
+            else
+              echo "should_run=false" >> $GITHUB_OUTPUT
+              echo "Comment does not match trigger pattern"
+            fi
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "Not triggered by supported event"
+          fi
 
+  initialize:
+    needs: check-trigger
+    if: needs.check-trigger.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    
     permissions:
       contents: read
       pull-requests: read
@@ -36,16 +72,6 @@ jobs:
           cd .github
           npm install
           
-      - name: Initialize Database Schema
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Run database setup if needed
-          echo "Database schema should be set up manually in the Supabase dashboard"
-          echo "Run the SQL script from .github/scripts/db-setup.sql in your Supabase SQL editor"
-          
       - name: Initialize Repository Analysis
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -56,7 +82,23 @@ jobs:
           cd .github
           node scripts/initialize-repo.js
           
+      - name: Add Comment Response
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✅ Repository initialization completed! The database has been updated with the latest repository data.'
+            })
+          
       - name: Summary
         run: |
           echo "🎉 Repository analysis initialization completed!"
-          echo "The system is now ready to provide reviewer suggestions on new PRs."
+          echo "Data collection summary:"
+          echo "- Processed all commits and their file changes"
+          echo "- Analyzed all pull requests (open, closed, merged)"
+          echo "- Collected review data and comments"
+          echo "- Handled contributor deduplication"
