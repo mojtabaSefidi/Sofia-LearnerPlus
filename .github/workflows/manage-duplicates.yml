@@ -1,0 +1,69 @@
+# .github/workflows/manage-duplicates.yml
+name: Manage Duplicate Contributors
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'detect'
+        type: choice
+        options:
+        - detect
+        - merge
+        - list
+        - add-manual
+      merge_priority:
+        description: 'Priority level to merge (for merge action)'
+        required: false
+        default: 'manual'
+        type: choice
+        options:
+        - manual
+        - auto-high
+        - auto-medium
+        - all
+      merge_all:
+        description: 'Merge all pending duplicates regardless of priority'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  manage-duplicates:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Install Dependencies
+        run: |
+          cd .github
+          npm install
+          
+      - name: Manage Duplicate Contributors
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          ACTION: ${{ github.event.inputs.action }}
+          MERGE_PRIORITY: ${{ github.event.inputs.merge_priority }}
+          MERGE_ALL: ${{ github.event.inputs.merge_all }}
+        run: |
+          cd .github
+          node scripts/manage-duplicates.js
+          
+      - name: Summary
+        run: |
+          echo "🎉 Duplicate management completed!"
+          echo "Action performed: ${{ github.event.inputs.action }}"
+          if [[ "${{ github.event.inputs.action }}" == "merge" ]]; then
+            echo "Merge priority: ${{ github.event.inputs.merge_priority }}"
+            echo "Merge all: ${{ github.event.inputs.merge_all }}"
+          fi
