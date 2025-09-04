@@ -1,4 +1,3 @@
-# .github/workflows/initialize-repo.yml
 name: Initialize Repository Analysis
 
 on:
