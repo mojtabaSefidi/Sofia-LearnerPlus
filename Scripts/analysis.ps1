@@ -1,3 +1,5 @@
+# test
+
 ﻿dotnet-rgit --cmd compute-loss --simulation-first-period 1 --mega-pr-size 100 --save-strategy nothing --conf-path "C:\Users\s_irsaee\Documents\relationalgit_corefx.json"
 dotnet-rgit --cmd compute-loss --simulation-first-period 1 --mega-pr-size 100 --save-strategy reviewers-actual --conf-path "C:\Users\s_irsaee\Documents\relationalgit_corefx.json" 
 dotnet-rgit --cmd compute-loss --simulation-first-period 1 --mega-pr-size 100 --save-strategy bird --pullRequests-reviewer-selection "0:nothing-nothing,-:replacerandom-1" --conf-path "C:\Users\s_irsaee\Documents\relationalgit_corefx.json"
