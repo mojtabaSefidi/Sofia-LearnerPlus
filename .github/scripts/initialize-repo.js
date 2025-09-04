@@ -387,11 +387,11 @@ async function processCommits() {
     const prCommits = await getPRCommitHashes();
     
     // Filter out merge commits and PR commits
-    const standaloneCommits = commits.filter(commit => 
-      !commit.message.toLowerCase().startsWith('merge') &&
-      commit.parents.length === 1 &&
-      !prCommits.has(commit.hash)
-    );
+    // const standaloneCommits = commits.filter(commit => 
+    //   !commit.message.toLowerCase().startsWith('merge') &&
+    //   commit.parents.length === 1 &&
+    //   !prCommits.has(commit.hash)
+    // );
     
     console.log(`Processing ${standaloneCommits.length} standalone commits`);
     
