@@ -1,4 +1,4 @@
-# .github/workflows/initialize-analysis.yml
+# initialize-analysis.yml
 name: Initialize Repository Analysis
 
 on:
