@@ -1,4 +1,4 @@
-# initialize-analysis.yml
+# .github/workflows/initialize-analysis.yml
 name: Initialize Repository Analysis
 
 on:
@@ -6,6 +6,10 @@ on:
     inputs:
       force_reinit:
         description: 'Force re-initialization (will clear existing data)'
+        required: false
+        default: 'false'
+      handle_duplicates:
+        description: 'Handle duplicate contributors'
         required: false
         default: 'false'
   issue_comment:
@@ -16,31 +20,43 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.check.outputs.should_run }}
+      handle_duplicates: ${{ steps.check.outputs.handle_duplicates }}
     steps:
       - name: Check Comment Trigger
         id: check
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "handle_duplicates=${{ github.event.inputs.handle_duplicates }}" >> $GITHUB_OUTPUT
             echo "Triggered manually"
           elif [ "${{ github.event_name }}" = "issue_comment" ]; then
             comment="${{ github.event.comment.body }}"
-            if [[ "$comment" =~ @[Ss]ofiabot[[:space:]]+[Ii]nitialize ]]; then
+            # Check for \Sofiabot Initialize pattern (with backslash)
+            if [[ "$comment" =~ \\[Ss]ofiabot[[:space:]]+[Ii]nitialize ]]; then
               # Check if commenter is owner or collaborator
               author_association="${{ github.event.comment.author_association }}"
               if [[ "$author_association" == "OWNER" || "$author_association" == "MEMBER" || "$author_association" == "COLLABORATOR" ]]; then
                 echo "should_run=true" >> $GITHUB_OUTPUT
+                # Check if comment includes duplicate handling flag
+                if [[ "$comment" =~ [Dd]uplicates ]]; then
+                  echo "handle_duplicates=true" >> $GITHUB_OUTPUT
+                else
+                  echo "handle_duplicates=false" >> $GITHUB_OUTPUT
+                fi
                 echo "Triggered by authorized comment: $comment"
               else
                 echo "should_run=false" >> $GITHUB_OUTPUT
+                echo "handle_duplicates=false" >> $GITHUB_OUTPUT
                 echo "Comment author not authorized: $author_association"
               fi
             else
               echo "should_run=false" >> $GITHUB_OUTPUT
+              echo "handle_duplicates=false" >> $GITHUB_OUTPUT
               echo "Comment does not match trigger pattern"
             fi
           else
             echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "handle_duplicates=false" >> $GITHUB_OUTPUT
             echo "Not triggered by supported event"
           fi
 
@@ -70,7 +86,8 @@ jobs:
       - name: Install Dependencies
         run: |
           cd .github
-          npm install
+          npm init -y
+          npm install @actions/github @actions/core @supabase/supabase-js
           
       - name: Initialize Repository Analysis
         env:
@@ -78,6 +95,7 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FORCE_REINIT: ${{ github.event.inputs.force_reinit }}
+          HANDLE_DUPLICATES: ${{ needs.check-trigger.outputs.handle_duplicates }}
         run: |
           cd .github
           node scripts/initialize-repo.js
@@ -101,4 +119,4 @@ jobs:
           echo "- Processed all commits and their file changes"
           echo "- Analyzed all pull requests (open, closed, merged)"
           echo "- Collected review data and comments"
-          echo "- Handled contributor deduplication"
+          echo "- Handled contributor deduplication: ${{ needs.check-trigger.outputs.handle_duplicates }}"
