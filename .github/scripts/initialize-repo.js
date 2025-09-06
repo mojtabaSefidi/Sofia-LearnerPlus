@@ -51,6 +51,25 @@ async function processCommits(handleDuplicates) {
     
     console.log(`Found ${commits.length} total commits`);
     
+    // ADD THIS: Get extended commit info for inspection
+    console.log('🔍 Extended commit information for first 5 commits:');
+    const extendedLogOutput = execSync(`git log --all --pretty=format:"%H|%an|%ae|%ad|%cn|%ce|%cd|%s|%b|%P|%d" --date=iso -5`, { encoding: 'utf8' });
+    const extendedCommits = extendedLogOutput.split('\n').filter(line => line.trim());
+    
+    extendedCommits.forEach((line, index) => {
+      const parts = line.split('|');
+      console.log(`\n--- Commit ${index + 1} ---`);
+      console.log(`Hash: ${parts[0]}`);
+      console.log(`Author: ${parts[1]} <${parts[2]}> at ${parts[3]}`);
+      console.log(`Committer: ${parts[4]} <${parts[5]}> at ${parts[6]}`);
+      console.log(`Subject: ${parts[7]}`);
+      console.log(`Body: ${parts[8] || '(empty)'}`);
+      console.log(`Parent Hashes: ${parts[9] || '(none - root commit)'}`);
+      console.log(`Ref Names: ${parts[10] || '(none)'}`);
+    });
+    console.log('----------------\n');
+    
+    
     // Get commits that are in PRs to exclude them
     const prCommits = await getPRCommitHashes();
     
