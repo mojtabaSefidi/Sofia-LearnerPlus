@@ -931,7 +931,7 @@ async function insertContributions(contributions) {
     const { error } = await supabase
       .from('contributions')
       .upsert(batch, { 
-        onConflict: 'contributor_id,file_id,contribution_date,activity_id,lines_modified',
+        // onConflict: 'contributor_id,file_id,contribution_date,activity_id,lines_modified',
         ignoreDuplicates: true 
       });
     
