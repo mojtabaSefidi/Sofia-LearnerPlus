@@ -854,6 +854,9 @@ async function insertContributions(contributions) {
     contributorMap.set(c.github_login, c.id);
     if (c.email) contributorMap.set(c.email, c.id);
   });
+
+  console.log(Array.from(contributorMap.entries()));
+  console.log('----------------------');
   
   const fileMap = new Map();
   dbFiles.forEach(f => {
@@ -871,6 +874,7 @@ async function insertContributions(contributions) {
     return true;
   });
   
+  let debug = true;
   for (const contrib of uniqueContributions) {
     const contributorId = contributorMap.get(contrib.contributor_key);
     const fileId = fileMap.get(contrib.file_path);
@@ -888,6 +892,24 @@ async function insertContributions(contributions) {
         pr_number: contrib.pr_number || null
       });
     } else {
+      if (debug)
+      {
+        console.log(
+          "Looking up contributor:",
+          JSON.stringify(contrib.contributor_key),
+          "→ found id:",
+          contributorId
+        );
+        
+        console.log(
+          "Looking up file:",
+          JSON.stringify(contrib.file_path),
+          "→ found id:",
+          fileId
+        );
+      };
+      
+      debug = false;
       console.warn(`⚠️ Cannot map contribution: contributor_key=${contrib.contributor_key}, file_path=${contrib.file_path}`);
       skipped++;
     }
