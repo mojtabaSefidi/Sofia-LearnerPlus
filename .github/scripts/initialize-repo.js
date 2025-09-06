@@ -110,8 +110,8 @@ async function processStandaloneCommit(commit, contributors, files, contribution
   
   // Process each file
   for (const fileChange of fileChanges) {
-    // Add new files to files map
-    if (fileChange.status === 'A' && !files.has(fileChange.file)) {
+  // Add ALL files to files map (not just new ones)
+    if (!files.has(fileChange.file)) {
       files.set(fileChange.file, {
         canonical_path: fileChange.file,
         current_path: fileChange.file
@@ -387,8 +387,8 @@ async function processSinglePR(pr, octokit, context, handleDuplicates) {
   contributors.push(prAuthor);
   
   // Add new files created by the PR author
-  const newFiles = prFiles.filter(file => file.status === 'added');
-  newFiles.forEach(file => {
+  // const newFiles = prFiles.filter(file => file.status === 'added');
+  prFiles.forEach(file => {
     files.push({
       canonical_path: file.filename,
       current_path: file.filename
