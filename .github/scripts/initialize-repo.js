@@ -122,7 +122,7 @@ async function processStandaloneCommit(commit, contributors, files, contribution
     const contributionKey = `${contributorKey}-${fileChange.file}-${commit.date.toISOString()}-${commit.hash}-${fileChange.linesModified}`;
     
     contributions.push({
-      contributor_key: contributorKey,
+      contributor_key: (contributor.email ? contributor.email.toLowerCase() : null) || contributor.github_login,
       file_path: fileChange.file,
       activity_type: 'commit',
       activity_id: commit.hash,
