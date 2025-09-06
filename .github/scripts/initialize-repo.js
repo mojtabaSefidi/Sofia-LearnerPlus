@@ -63,11 +63,13 @@ async function processCommits(handleDuplicates) {
     console.log(`📊 Found ${allUniqueEmails.length} unique email addresses across ${allCommits.length} commits`);
     console.log(`📊 Found ${allUniqueNames.length} unique author names`);
     
-    // Test GitHub API for ALL unique emails
+    // Test GitHub API for ALL unique emails AND names
     console.log('\n🔍 Testing GitHub API lookups for all unique contributors...');
     const githubToken = process.env.GITHUB_TOKEN;
-    const foundUsernames = new Map(); // email -> username mapping
+    const foundUsernames = new Map(); // identifier -> username mapping
     
+    // First try emails (more reliable)
+    console.log('\n--- Searching by EMAIL ---');
     for (let i = 0; i < allUniqueEmails.length; i++) {
       const email = allUniqueEmails[i];
       
@@ -81,7 +83,7 @@ async function processCommits(handleDuplicates) {
           headers['Authorization'] = `token ${githubToken}`;
         }
         
-        console.log(`🔍 [${i + 1}/${allUniqueEmails.length}] Checking: ${email}`);
+        console.log(`🔍 [${i + 1}/${allUniqueEmails.length}] Email: ${email}`);
         
         const response = await fetch(`https://api.github.com/search/users?q=${encodeURIComponent(email)}+in:email`, {
           headers
@@ -95,11 +97,12 @@ async function processCommits(handleDuplicates) {
             foundUsernames.set(email, {
               username,
               name,
-              profile: data.items[0].html_url
+              profile: data.items[0].html_url,
+              method: 'email'
             });
             console.log(`   ✅ Found: ${username} (${name || 'No name'})`);
           } else {
-            console.log(`   ❌ No GitHub user found`);
+            console.log(`   ❌ No user found by email`);
           }
         } else {
           console.log(`   ⚠️ API Error ${response.status}`);
@@ -108,7 +111,67 @@ async function processCommits(handleDuplicates) {
         console.log(`   ❌ Error: ${error.message}`);
       }
       
-      // Rate limiting delay
+      await new Promise(resolve => setTimeout(resolve, githubToken ? 300 : 1500));
+    }
+    
+    // Then try names for emails that didn't match
+    console.log('\n--- Searching by NAME for unmatched emails ---');
+    const unmatchedEmails = allUniqueEmails.filter(email => !foundUsernames.has(email));
+    
+    for (let i = 0; i < unmatchedEmails.length; i++) {
+      const email = unmatchedEmails[i];
+      // Get the corresponding name for this email from commits
+      const commitWithEmail = allCommits.find(line => line.split('|')[2] === email);
+      const authorName = commitWithEmail ? commitWithEmail.split('|')[1] : null;
+      
+      if (!authorName) continue;
+      
+      try {
+        const headers = {
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'GitHub-Actions-Bot/1.0'
+        };
+        
+        if (githubToken) {
+          headers['Authorization'] = `token ${githubToken}`;
+        }
+        
+        console.log(`🔍 [${i + 1}/${unmatchedEmails.length}] Name: "${authorName}" (for ${email})`);
+        
+        const response = await fetch(`https://api.github.com/search/users?q=${encodeURIComponent(authorName)}+in:name`, {
+          headers
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.items && data.items.length > 0) {
+            // Show multiple matches since name search is less precise
+            console.log(`   📋 Found ${data.items.length} potential matches:`);
+            data.items.slice(0, 3).forEach((user, idx) => {
+              console.log(`      ${idx + 1}. ${user.login} - "${user.name || 'No name'}" (${user.html_url})`);
+            });
+            
+            // Take the first match (you might want to add more logic here)
+            const bestMatch = data.items[0];
+            foundUsernames.set(email, {
+              username: bestMatch.login,
+              name: bestMatch.name,
+              profile: bestMatch.html_url,
+              method: 'name',
+              confidence: 'low', // Name matches are less reliable
+              totalMatches: data.items.length
+            });
+            console.log(`   ⚠️ Using first match: ${bestMatch.login}`);
+          } else {
+            console.log(`   ❌ No user found by name`);
+          }
+        } else {
+          console.log(`   ⚠️ API Error ${response.status}`);
+        }
+      } catch (error) {
+        console.log(`   ❌ Error: ${error.message}`);
+      }
+      
       await new Promise(resolve => setTimeout(resolve, githubToken ? 300 : 1500));
     }
     
