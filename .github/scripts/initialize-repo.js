@@ -856,13 +856,16 @@ async function insertContributions(contributions) {
   });
 
   console.log(Array.from(contributorMap.entries()));
-  console.log('----------------------');
+  console.log('---------CONT-------------');
   
   const fileMap = new Map();
   dbFiles.forEach(f => {
     fileMap.set(f.canonical_path, f.id);
   });
   
+  console.log('Sample files in DB:', dbFiles.slice(0, 10).map(f => f.canonical_path));
+  console.log('---------Files-------------');
+
   const mappedContributions = [];
   let skipped = 0;
   
@@ -874,7 +877,7 @@ async function insertContributions(contributions) {
     return true;
   });
   
-  let debug = true;
+  let debugCount = 0;
   for (const contrib of uniqueContributions) {
     const contributorId = contributorMap.get(contrib.contributor_key);
     const fileId = fileMap.get(contrib.file_path);
@@ -892,7 +895,7 @@ async function insertContributions(contributions) {
         pr_number: contrib.pr_number || null
       });
     } else {
-      if (debug)
+      if (debugCount < 5)
       {
         console.log(
           "Looking up contributor:",
@@ -907,9 +910,9 @@ async function insertContributions(contributions) {
           "→ found id:",
           fileId
         );
-      };
+        debugCount++;
+      }
       
-      debug = false;
       console.warn(`⚠️ Cannot map contribution: contributor_key=${contrib.contributor_key}, file_path=${contrib.file_path}`);
       skipped++;
     }
