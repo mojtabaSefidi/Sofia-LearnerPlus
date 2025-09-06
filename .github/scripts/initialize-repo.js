@@ -51,44 +51,37 @@ async function processCommits(handleDuplicates) {
     
     console.log(`Found ${commits.length} total commits`);
     
-    // ADD THIS: Get extended commit info for inspection
-    console.log('🔍 Extended commit information for first 5 commits:');
-    const extendedLogOutput = execSync(`git log --all --pretty=format:"%H|%an|%ae|%ad|%cn|%ce|%cd|%s|%b|%P|%d" --date=iso -5`, { encoding: 'utf8' });
-    const extendedCommits = extendedLogOutput.split('\n').filter(line => line.trim());
+    // ADD THIS: Get ALL commits (not just first 5)
+    console.log('🔍 Getting all unique contributors...');
+    const allCommitsOutput = execSync(`git log --all --pretty=format:"%H|%an|%ae|%ad|%cn|%ce|%cd|%s|%b|%P|%d" --date=iso`, { encoding: 'utf8' });
+    const allCommits = allCommitsOutput.split('\n').filter(line => line.trim());
     
-    // In your processCommits function, add this after the existing logging:
-
-    extendedCommits.forEach((line, index) => {
-      const parts = line.split('|');
-      console.log(`\n--- Commit ${index + 1} ---`);
-      console.log(`Hash: ${parts[0]}`);
-      console.log(`Author: ${parts[1]} <${parts[2]}> at ${parts[3]}`);
-      console.log(`Committer: ${parts[4]} <${parts[5]}> at ${parts[6]}`);
-      console.log(`Subject: ${parts[7]}`);
-      console.log(`Body: ${parts[8] || '(empty)'}`);
-      console.log(`Parent Hashes: ${parts[9] || '(none - root commit)'}`);
-      console.log(`Ref Names: ${parts[10] || '(none)'}`);
-    });
+    // Extract unique emails from ALL commits
+    const allUniqueEmails = [...new Set(allCommits.map(line => line.split('|')[2]))].filter(Boolean);
+    const allUniqueNames = [...new Set(allCommits.map(line => line.split('|')[1]))].filter(Boolean);
     
-    // Test GitHub API for unique emails with authentication
-    console.log('\n🔍 Testing GitHub API lookups...');
-    const uniqueEmails = [...new Set(extendedCommits.map(line => line.split('|')[2]))].filter(Boolean);
+    console.log(`📊 Found ${allUniqueEmails.length} unique email addresses across ${allCommits.length} commits`);
+    console.log(`📊 Found ${allUniqueNames.length} unique author names`);
+    
+    // Test GitHub API for ALL unique emails
+    console.log('\n🔍 Testing GitHub API lookups for all unique contributors...');
     const githubToken = process.env.GITHUB_TOKEN;
+    const foundUsernames = new Map(); // email -> username mapping
     
-    for (const email of uniqueEmails.slice(0, 3)) {
+    for (let i = 0; i < allUniqueEmails.length; i++) {
+      const email = allUniqueEmails[i];
+      
       try {
         const headers = {
           'Accept': 'application/vnd.github.v3+json',
           'User-Agent': 'GitHub-Actions-Bot/1.0'
         };
         
-        // Add authentication if token is available
         if (githubToken) {
           headers['Authorization'] = `token ${githubToken}`;
-          console.log(`🔑 Using authenticated GitHub API for ${email}`);
-        } else {
-          console.log(`⚠️ No GitHub token - using unauthenticated API for ${email}`);
         }
+        
+        console.log(`🔍 [${i + 1}/${allUniqueEmails.length}] Checking: ${email}`);
         
         const response = await fetch(`https://api.github.com/search/users?q=${encodeURIComponent(email)}+in:email`, {
           headers
@@ -96,26 +89,47 @@ async function processCommits(handleDuplicates) {
         
         if (response.ok) {
           const data = await response.json();
-          console.log(`📧 ${email}: ${data.total_count} users found`);
           if (data.items && data.items.length > 0) {
-            data.items.slice(0, 2).forEach((user, i) => {
-              console.log(`   ${i + 1}. ${user.login} (${user.html_url})`);
-              console.log(`      Name: ${user.name || 'Not provided'}`);
-              console.log(`      Public repos: ${user.public_repos || 'N/A'}`);
+            const username = data.items[0].login;
+            const name = data.items[0].name;
+            foundUsernames.set(email, {
+              username,
+              name,
+              profile: data.items[0].html_url
             });
+            console.log(`   ✅ Found: ${username} (${name || 'No name'})`);
+          } else {
+            console.log(`   ❌ No GitHub user found`);
           }
         } else {
-          console.log(`📧 ${email}: API Error ${response.status} - ${response.statusText}`);
-          if (response.status === 403) {
-            console.log(`   Rate limit may be exceeded`);
-          }
+          console.log(`   ⚠️ API Error ${response.status}`);
         }
       } catch (error) {
-        console.log(`📧 ${email}: ${error.message}`);
+        console.log(`   ❌ Error: ${error.message}`);
       }
       
-      // Rate limiting delay (can be shorter with authentication)
-      await new Promise(resolve => setTimeout(resolve, githubToken ? 500 : 2000));
+      // Rate limiting delay
+      await new Promise(resolve => setTimeout(resolve, githubToken ? 300 : 1500));
+    }
+    
+    // Summary of all found GitHub usernames
+    console.log('\n📋 SUMMARY - All GitHub usernames found:');
+    console.log(`Found GitHub usernames for ${foundUsernames.size} out of ${allUniqueEmails.length} email addresses`);
+    
+    const sortedUsernames = Array.from(foundUsernames.entries())
+      .sort(([emailA], [emailB]) => emailA.localeCompare(emailB));
+    
+    sortedUsernames.forEach(([email, data], index) => {
+      console.log(`${index + 1}. ${data.username} - ${email} (${data.name || 'No name'})`);
+    });
+    
+    // Also show emails without GitHub matches
+    const emailsWithoutGitHub = allUniqueEmails.filter(email => !foundUsernames.has(email));
+    if (emailsWithoutGitHub.length > 0) {
+      console.log(`\n❌ Emails without GitHub matches (${emailsWithoutGitHub.length}):`);
+      emailsWithoutGitHub.forEach((email, index) => {
+        console.log(`${index + 1}. ${email}`);
+      });
     }
     
     console.log('-------------\n');
