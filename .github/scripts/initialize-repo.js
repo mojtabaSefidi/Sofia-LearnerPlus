@@ -774,7 +774,8 @@ async function insertContributors(contributors) {
           github_login: contributor.github_login,
           canonical_name: contributor.canonical_name,
           email: contributor.email
-        }, { onConflict: 'github_login' });
+        // }, { onConflict: 'github_login' });
+        });
       
       if (error) {
         console.warn(`⚠️ Error inserting contributor ${contributor.github_login}:`, error);
