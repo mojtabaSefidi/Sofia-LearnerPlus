@@ -1,8 +1,8 @@
 // .github/scripts/initialize-repo.js
 const github = require('@actions/github');
 const { createClient } = require('@supabase/supabase-js');
-const git = require('simple-git')();
 const core = require('@actions/core');
+const { execSync } = require('child_process');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -13,31 +13,16 @@ async function initializeRepository() {
   console.log('🚀 Starting repository initialization...');
   
   try {
-    // Step 1: Process Pull Requests first (as they define the main workflow)
-    console.log('📋 Processing pull requests...');
-    const prData = await processPullRequests();
+    const handleDuplicates = process.env.HANDLE_DUPLICATES === 'true';
+    console.log(`🔧 Handle duplicates: ${handleDuplicates}`);
     
-    // Step 2: Process Commits (outside PRs)
+    // Step 1: Process Commits first (as requested)
     console.log('📊 Processing commits...');
-    const commitData = await processCommits();
+    const commitData = await processCommits(handleDuplicates);
     
-    // Step 3: Combine all contributor data and handle duplicates
-    // console.log('👥 Handling contributors and duplicates...');
-    // await handleContributorsWithDuplicates([...prData.contributors, ...commitData.contributors]);
-    
-    // Step 4: Insert files
-    console.log('📁 Inserting files...');
-    await insertFiles([...prData.files, ...commitData.files]);
-    
-    // Step 5: Insert contributions with proper contributor mapping
-    console.log('🔗 Inserting contributions...');
-    await insertContributions([...prData.contributions, ...commitData.contributions]);
-    
-    // Step 6: Insert review comments
-    if (prData.reviewComments.length > 0) {
-      console.log('💬 Inserting review comments...');
-      await insertReviewComments(prData.reviewComments);
-    }
+    // Step 2: Process Pull Requests
+    console.log('📋 Processing pull requests...');
+    const prData = await processPullRequests(handleDuplicates);
     
     console.log('✅ Repository initialization completed successfully!');
     console.log(`📈 Summary:
@@ -53,7 +38,187 @@ async function initializeRepository() {
   }
 }
 
-async function processPullRequests() {
+async function processCommits(handleDuplicates) {
+  console.log('📊 Processing commits outside PRs...');
+  
+  try {
+    // Get all commits using git log
+    const gitLogOutput = execSync('git log --all --pretty=format:"%H|%an|%ae|%ad|%s" --date=iso', { encoding: 'utf8' });
+    const commits = gitLogOutput.split('\n').filter(line => line.trim()).map(line => {
+      const [hash, author_name, author_email, date, message] = line.split('|');
+      return { hash, author_name, author_email, date: new Date(date), message };
+    });
+    
+    console.log(`Found ${commits.length} total commits`);
+    
+    // Get commits that are in PRs to exclude them
+    const prCommits = await getPRCommitHashes();
+    
+    // Filter out merge commits and PR commits
+    const standaloneCommits = commits.filter(commit => 
+      !commit.message.toLowerCase().startsWith('merge') &&
+      !prCommits.has(commit.hash)
+    );
+    
+    console.log(`Processing ${standaloneCommits.length} standalone commits`);
+    
+    const contributors = new Map();
+    const files = new Map();
+    const contributions = [];
+    
+    for (const commit of standaloneCommits) {
+      try {
+        await processStandaloneCommit(commit, contributors, files, contributions, handleDuplicates);
+      } catch (error) {
+        console.warn(`⚠️ Error processing commit ${commit.hash}: ${error.message}`);
+      }
+    }
+    
+    // Insert data
+    await insertContributors(Array.from(contributors.values()));
+    await insertFiles(Array.from(files.values()));
+    await insertContributions(contributions);
+    
+    return {
+      contributors: Array.from(contributors.values()),
+      files: Array.from(files.values()),
+      contributions
+    };
+    
+  } catch (error) {
+    console.error('Error processing commits:', error);
+    return { contributors: [], files: [], contributions: [] };
+  }
+}
+
+async function processStandaloneCommit(commit, contributors, files, contributions, handleDuplicates) {
+  // Get commit file changes
+  const fileChanges = await getCommitFileChanges(commit.hash);
+  
+  // Process contributor
+  const contributor = await resolveContributor(
+    commit.author_name,
+    commit.author_email,
+    null, // No GitHub login from git commit
+    handleDuplicates
+  );
+  
+  const contributorKey = contributor.email || contributor.github_login;
+  if (!contributors.has(contributorKey)) {
+    contributors.set(contributorKey, contributor);
+  }
+  
+  // Process each file
+  for (const fileChange of fileChanges) {
+    // Add new files to files map
+    if (fileChange.status === 'A' && !files.has(fileChange.file)) {
+      files.set(fileChange.file, {
+        canonical_path: fileChange.file,
+        current_path: fileChange.file
+      });
+    }
+    
+    // Check for duplicate contribution (basic check for now)
+    const contributionKey = `${contributorKey}-${fileChange.file}-${commit.date.toISOString()}-${commit.hash}-${fileChange.linesModified}`;
+    
+    contributions.push({
+      contributor_key: contributorKey,
+      file_path: fileChange.file,
+      activity_type: 'commit',
+      activity_id: commit.hash,
+      contribution_date: commit.date,
+      lines_added: fileChange.linesAdded || 0,
+      lines_deleted: fileChange.linesDeleted || 0,
+      lines_modified: fileChange.linesModified || 0,
+      pr_number: null,
+      contribution_key: contributionKey
+    });
+  }
+}
+
+async function getCommitFileChanges(commitHash) {
+  try {
+    const nameStatusOutput = execSync(`git show ${commitHash} --name-status --format=""`, { encoding: 'utf8' });
+    const numStatOutput = execSync(`git show ${commitHash} --numstat --format=""`, { encoding: 'utf8' });
+    
+    const files = [];
+    const numStatLines = numStatOutput.split('\n').filter(line => line.trim());
+    const nameStatusLines = nameStatusOutput.split('\n').filter(line => line.trim());
+    
+    // Parse numstat for line changes
+    const numStatMap = new Map();
+    numStatLines.forEach(line => {
+      const parts = line.split('\t');
+      if (parts.length >= 3) {
+        const filename = parts[2];
+        const added = parts[0] === '-' ? 0 : parseInt(parts[0]) || 0;
+        const deleted = parts[1] === '-' ? 0 : parseInt(parts[1]) || 0;
+        numStatMap.set(filename, { added, deleted });
+      }
+    });
+    
+    // Parse name-status for file status
+    nameStatusLines.forEach(line => {
+      const parts = line.split('\t');
+      if (parts.length >= 2) {
+        const status = parts[0];
+        const filename = parts[1];
+        
+        const numStat = numStatMap.get(filename) || { added: 0, deleted: 0 };
+        
+        files.push({
+          status: status[0],
+          file: filename,
+          linesAdded: numStat.added,
+          linesDeleted: numStat.deleted,
+          linesModified: numStat.added + numStat.deleted
+        });
+      }
+    });
+    
+    return files;
+  } catch (error) {
+    console.warn(`⚠️ Error getting file changes for commit ${commitHash}:`, error.message);
+    return [];
+  }
+}
+
+async function getPRCommitHashes() {
+  const prCommits = new Set();
+  
+  try {
+    const token = process.env.GITHUB_TOKEN;
+    if (!token) return prCommits;
+    
+    const octokit = github.getOctokit(token);
+    const context = github.context;
+    
+    // Get all PRs
+    const allPRs = await fetchAllPRs(octokit, context);
+    
+    // Get commits for each PR
+    for (const pr of allPRs) {
+      try {
+        const { data: commits } = await octokit.rest.pulls.listCommits({
+          owner: context.repo.owner,
+          repo: context.repo.repo,
+          pull_number: pr.number
+        });
+        
+        commits.forEach(commit => prCommits.add(commit.sha));
+      } catch (error) {
+        console.warn(`⚠️ Error getting commits for PR #${pr.number}`);
+      }
+    }
+    
+  } catch (error) {
+    console.warn('⚠️ Error getting PR commits, processing all commits');
+  }
+  
+  return prCommits;
+}
+
+async function processPullRequests(handleDuplicates) {
   const token = process.env.GITHUB_TOKEN;
   if (!token) {
     console.log('⚠️ No GITHUB_TOKEN provided, skipping PR processing');
@@ -74,26 +239,28 @@ async function processPullRequests() {
   
   for (const pr of allPRs) {
     try {
-      const prResult = await processSinglePR(pr, octokit, context);
-      
-      // Collect PR data
-      pullRequests.push(prResult.prData);
-      
-      // Skip draft PRs for contributions
+      // Skip draft PRs
       if (pr.draft) {
         console.log(`⏭️ Skipping draft PR #${pr.number}`);
         continue;
       }
+
+      const prResult = await processSinglePR(pr, octokit, context, handleDuplicates);
+      
+      // Collect PR data
+      pullRequests.push(prResult.prData);
       
       // Handle PR based on status
       if (pr.state === 'open') {
         // For open PRs: only add PR data and basic contributor info
         if (!contributors.has(prResult.prData.author_login)) {
-          contributors.set(prResult.prData.author_login, {
-            github_login: prResult.prData.author_login,
-            canonical_name: prResult.prData.author_login,
-            email: null // No email available from PR API
-          });
+          const contributor = await resolveContributor(
+            prResult.prData.author_login,
+            null,
+            prResult.prData.author_login,
+            handleDuplicates
+          );
+          contributors.set(prResult.prData.author_login, contributor);
         }
       } else {
         // For closed/merged PRs: full processing
@@ -124,8 +291,12 @@ async function processPullRequests() {
     }
   }
   
-  // Insert PRs into database
+  // Insert data
   await insertPullRequests(pullRequests);
+  await insertContributors(Array.from(contributors.values()));
+  await insertFiles(Array.from(files.values()));
+  await insertContributions(contributions);
+  await insertReviewComments(reviewComments);
   
   return {
     pullRequests,
@@ -136,7 +307,7 @@ async function processPullRequests() {
   };
 }
 
-async function processSinglePR(pr, octokit, context) {
+async function processSinglePR(pr, octokit, context, handleDuplicates) {
   const prNumber = pr.number;
   
   // Get PR files
@@ -212,11 +383,8 @@ async function processSinglePR(pr, octokit, context) {
   const contributions = [];
   
   // Add PR author
-  contributors.push({
-    github_login: pr.user.login,
-    canonical_name: pr.user.login,
-    email: null
-  });
+  const prAuthor = await resolveContributor(pr.user.login, null, pr.user.login, handleDuplicates);
+  contributors.push(prAuthor);
   
   // Add new files created by the PR author
   const newFiles = prFiles.filter(file => file.status === 'added');
@@ -230,12 +398,15 @@ async function processSinglePR(pr, octokit, context) {
   // Add commit contributions (excluding merge commits)
   for (const commit of nonMergeCommits) {
     // Add commit author if different from PR author
+    let commitAuthor = prAuthor;
     if (commit.author && commit.author.login !== pr.user.login) {
-      contributors.push({
-        github_login: commit.author.login,
-        canonical_name: commit.author.login,
-        email: null
-      });
+      commitAuthor = await resolveContributor(
+        commit.author.login,
+        null,
+        commit.author.login,
+        handleDuplicates
+      );
+      contributors.push(commitAuthor);
     }
     
     // For each file in each commit
@@ -243,7 +414,7 @@ async function processSinglePR(pr, octokit, context) {
       const fileLinesModified = (file.additions || 0) + (file.deletions || 0);
       
       contributions.push({
-        contributor_login: commit.author ? commit.author.login : pr.user.login,
+        contributor_key: commitAuthor.email || commitAuthor.github_login,
         file_path: file.filename,
         activity_type: 'commit',
         activity_id: commit.sha,
@@ -259,18 +430,20 @@ async function processSinglePR(pr, octokit, context) {
   // Add review contributions
   for (const reviewer of uniqueReviewers) {
     // Add reviewer as contributor
-    contributors.push({
-      github_login: reviewer.login,
-      canonical_name: reviewer.login,
-      email: null
-    });
+    const reviewerContributor = await resolveContributor(
+      reviewer.login,
+      null,
+      reviewer.login,
+      handleDuplicates
+    );
+    contributors.push(reviewerContributor);
     
     // Add review contribution for each file
     for (const file of prFiles) {
       const fileLinesModified = (file.additions || 0) + (file.deletions || 0);
       
       contributions.push({
-        contributor_login: reviewer.login,
+        contributor_key: reviewerContributor.email || reviewerContributor.github_login,
         file_path: file.filename,
         activity_type: 'review',
         activity_id: prNumber.toString(),
@@ -284,7 +457,7 @@ async function processSinglePR(pr, octokit, context) {
   }
   
   // Get review comments
-  const reviewComments = await getPRComments(pr, octokit, context);
+  const reviewComments = await getPRComments(pr, octokit, context, handleDuplicates);
   
   return {
     prData,
@@ -295,7 +468,7 @@ async function processSinglePR(pr, octokit, context) {
   };
 }
 
-async function getPRComments(pr, octokit, context) {
+async function getPRComments(pr, octokit, context, handleDuplicates) {
   const comments = [];
   
   try {
@@ -335,7 +508,7 @@ async function getPRComments(pr, octokit, context) {
     for (const comment of allComments) {
       if (isValidComment(comment)) {
         comments.push({
-          contributor_login: comment.user.login,
+          contributor_key: comment.user.login,
           pr_number: pr.number,
           comment_date: new Date(comment.created_at),
           comment_text: comment.body
@@ -360,10 +533,11 @@ function isValidComment(comment) {
   const body = comment.body.toLowerCase();
   
   // Skip GitHub Action bot comments
-  if (comment.user.login === 'github-actions[bot]') return false;
+  if (comment.user.login === 'github-actions[bot]' || comment.user.login.includes('[bot]')) return false;
   
   // Skip command-like comments
   if (body.includes('@sofiabot') || 
+      body.includes('\\sofiabot') ||
       body.includes('assign-reviewer') || 
       body.startsWith('/') || 
       body.startsWith('@bot')) {
@@ -373,212 +547,17 @@ function isValidComment(comment) {
   return true;
 }
 
-async function processCommits() {
-  console.log('📊 Processing commits outside PRs...');
-  
-  try {
-    // Get all commits
-    const log = await git.log({ '--all': null });
-    const commits = log.all;
-    
-    console.log(`Found ${commits.length} total commits`);
-    
-    // Get commits that are in PRs to exclude them
-    const prCommits = await getPRCommitHashes();
-    
-    // Filter out merge commits and PR commits
-    // const standaloneCommits = commits.filter(commit => 
-    //   !commit.message.toLowerCase().startsWith('merge') &&
-    //   commit.parents.length === 1 &&
-    //   !prCommits.has(commit.hash)
-    // );
-    
-    console.log(`Processing ${standaloneCommits.length} standalone commits`);
-    
-    const contributors = new Map();
-    const files = new Map();
-    const contributions = [];
-    
-    for (const commit of standaloneCommits) {
-      try {
-        await processStandaloneCommit(commit, contributors, files, contributions);
-      } catch (error) {
-        console.warn(`⚠️ Error processing commit ${commit.hash}: ${error.message}`);
-      }
+async function resolveContributor(name, email, githubLogin, handleDuplicates) {
+  if (handleDuplicates) {
+    // Check for duplicates in database
+    const primaryLogin = await findPrimaryContributor(name, email, githubLogin);
+    if (primaryLogin) {
+      return {
+        github_login: primaryLogin,
+        canonical_name: normalizeName(name || primaryLogin),
+        email: email
+      };
     }
-    
-    return {
-      contributors: Array.from(contributors.values()),
-      files: Array.from(files.values()),
-      contributions
-    };
-    
-  } catch (error) {
-    console.error('Error processing commits:', error);
-    return { contributors: [], files: [], contributions: [] };
-  }
-}
-
-async function getPRCommitHashes() {
-  const prCommits = new Set();
-  
-  try {
-    const token = process.env.GITHUB_TOKEN;
-    if (!token) return prCommits;
-    
-    const octokit = github.getOctokit(token);
-    const context = github.context;
-    
-    // Get all PRs
-    const allPRs = await fetchAllPRs(octokit, context);
-    
-    // Get commits for each PR
-    for (const pr of allPRs) {
-      try {
-        const { data: commits } = await octokit.rest.pulls.listCommits({
-          owner: context.repo.owner,
-          repo: context.repo.repo,
-          pull_number: pr.number
-        });
-        
-        commits.forEach(commit => prCommits.add(commit.sha));
-      } catch (error) {
-        console.warn(`⚠️ Error getting commits for PR #${pr.number}`);
-      }
-    }
-    
-  } catch (error) {
-    console.warn('⚠️ Error getting PR commits, processing all commits');
-  }
-  
-  return prCommits;
-}
-
-async function processStandaloneCommit(commit, contributors, files, contributions) {
-  // Get commit file changes
-  const fileChanges = await getCommitFileChanges(commit.hash);
-  
-  // Process contributor
-  const contributor = await resolveContributor(
-    commit.author_name,
-    commit.author_email,
-    null // No GitHub login from git commit
-  );
-  
-  const contributorKey = contributor.email || contributor.github_login;
-  if (!contributors.has(contributorKey)) {
-    contributors.set(contributorKey, contributor);
-  }
-  
-  // Process each file
-  for (const fileChange of fileChanges) {
-    // Add new files to files map
-    if (fileChange.status === 'A' && !files.has(fileChange.file)) {
-      files.set(fileChange.file, {
-        canonical_path: fileChange.file,
-        current_path: fileChange.file
-      });
-    }
-    
-    // Check for duplicate contribution
-    const isDuplicate = await checkDuplicateContribution(
-      contributorKey,
-      fileChange.file,
-      new Date(commit.date),
-      commit.hash,
-      fileChange.linesModified
-    );
-    
-    if (!isDuplicate) {
-      contributions.push({
-        contributor_email: contributor.email,
-        contributor_login: contributor.github_login,
-        file_path: fileChange.file,
-        activity_type: 'commit',
-        activity_id: commit.hash,
-        contribution_date: new Date(commit.date),
-        lines_added: fileChange.linesAdded || 0,
-        lines_deleted: fileChange.linesDeleted || 0,
-        lines_modified: fileChange.linesModified || 0,
-        pr_number: null
-      });
-    }
-  }
-}
-
-async function getCommitFileChanges(commitHash) {
-  try {
-    const nameStatus = await git.show([commitHash, '--name-status', '--format=']);
-    const numStat = await git.show([commitHash, '--numstat', '--format=']);
-    
-    const files = [];
-    const numStatLines = numStat.split('\n').filter(line => line.trim());
-    const nameStatusLines = nameStatus.split('\n').filter(line => line.trim());
-    
-    // Parse numstat for line changes
-    const numStatMap = new Map();
-    numStatLines.forEach(line => {
-      const parts = line.split('\t');
-      if (parts.length >= 3) {
-        const filename = parts[2];
-        const added = parts[0] === '-' ? 0 : parseInt(parts[0]) || 0;
-        const deleted = parts[1] === '-' ? 0 : parseInt(parts[1]) || 0;
-        numStatMap.set(filename, { added, deleted });
-      }
-    });
-    
-    // Parse name-status for file status
-    nameStatusLines.forEach(line => {
-      const parts = line.split('\t');
-      const status = parts[0];
-      const filename = parts[1];
-      
-      const numStat = numStatMap.get(filename) || { added: 0, deleted: 0 };
-      
-      files.push({
-        status: status[0],
-        file: filename,
-        linesAdded: numStat.added,
-        linesDeleted: numStat.deleted,
-        linesModified: numStat.added + numStat.deleted
-      });
-    });
-    
-    return files;
-  } catch (error) {
-    console.warn(`⚠️ Error getting file changes for commit ${commitHash}`);
-    return [];
-  }
-}
-
-async function handleContributorsWithDuplicates(allContributors) {
-  console.log(`👥 Processing ${allContributors.length} contributors with duplicate detection...`);
-  
-  // Step 1: Insert all contributors first (with duplicates)
-  const uniqueContributors = new Map();
-  allContributors.forEach(contributor => {
-    const key = contributor.email || contributor.github_login;
-    if (!uniqueContributors.has(key)) {
-      uniqueContributors.set(key, contributor);
-    }
-  });
-  
-  await insertContributorsWithDuplicates(Array.from(uniqueContributors.values()));
-  
-  // Step 2: Run deduplication process
-  await deduplicateContributors();
-}
-
-async function resolveContributor(name, email, githubLogin) {
-  // First check duplicate contributors table
-  const primaryLogin = await findPrimaryContributor(name, email, githubLogin);
-  
-  if (primaryLogin) {
-    return {
-      github_login: primaryLogin,
-      canonical_name: normalizeName(name),
-      email: email
-    };
   }
   
   // If no duplicate found, create new contributor
@@ -586,7 +565,7 @@ async function resolveContributor(name, email, githubLogin) {
   
   return {
     github_login: resolvedLogin,
-    canonical_name: normalizeName(name),
+    canonical_name: normalizeName(name || resolvedLogin),
     email: email
   };
 }
@@ -602,7 +581,7 @@ async function findPrimaryContributor(name, email, githubLogin) {
       return null;
     }
     
-    for (const duplicate of duplicates) {
+    for (const duplicate of duplicates || []) {
       // Check exact matches first
       if (githubLogin && duplicate.github_usernames.includes(githubLogin)) {
         return duplicate.primary_github_login;
@@ -662,7 +641,7 @@ function calculateSimilarity(str1, str2) {
   const distance = levenshteinDistance(cleanStr1, cleanStr2);
   const maxLength = Math.max(cleanStr1.length, cleanStr2.length);
   
-  return 1 - (distance / maxLength);
+  return maxLength === 0 ? 1 : 1 - (distance / maxLength);
 }
 
 function levenshteinDistance(str1, str2) {
@@ -683,16 +662,6 @@ function levenshteinDistance(str1, str2) {
   }
   
   return matrix[str2.length][str1.length];
-}
-
-async function checkDuplicateContribution(contributorKey, filePath, date, activityId, linesModified) {
-  try {
-    // This would need to be implemented with proper database lookup
-    // For now, return false to allow all contributions
-    return false;
-  } catch (error) {
-    return false;
-  }
 }
 
 function extractUsernameFromEmail(email) {
@@ -725,7 +694,7 @@ function normalizeName(name) {
     .replace(/[^a-zA-Z0-9\s]/g, '')
     .toLowerCase()
     .trim()
-    .replace(/\s+/g, '');
+    .replace(/\s+/g, '-') || 'unknown';
 }
 
 async function fetchAllPRs(octokit, context) {
@@ -762,6 +731,7 @@ async function insertPullRequests(pullRequests) {
   
   const batchSize = 50;
   let totalInserted = 0;
+  let totalSkipped = 0;
   
   for (let i = 0; i < pullRequests.length; i += batchSize) {
     const batch = pullRequests.slice(i, i + batchSize);
@@ -772,41 +742,43 @@ async function insertPullRequests(pullRequests) {
     
     if (error) {
       console.error('Error inserting PRs batch:', error);
-      throw error;
+      totalSkipped += batch.length;
+    } else {
+      totalInserted += batch.length;
     }
     
-    totalInserted += batch.length;
-    console.log(`📝 Inserted PR batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(pullRequests.length/batchSize)} (${totalInserted} total)`);
+    console.log(`📝 Processed PR batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(pullRequests.length/batchSize)}`);
   }
   
-  console.log(`✅ Successfully inserted ${totalInserted} pull requests`);
+  console.log(`✅ Pull requests: ${totalInserted} inserted/updated, ${totalSkipped} failed`);
 }
 
-async function insertContributorsWithDuplicates(contributors) {
+async function insertContributors(contributors) {
   if (contributors.length === 0) return;
   
-  console.log(`👥 Inserting ${contributors.length} contributors (with potential duplicates)...`);
+  console.log(`👥 Inserting ${contributors.length} contributors...`);
   
   let totalInserted = 0;
   let totalSkipped = 0;
   
-  for (const contributor of contributors) {
+  // Remove duplicates by github_login
+  const uniqueContributors = Array.from(
+    new Map(contributors.map(c => [c.github_login, c])).values()
+  );
+  
+  for (const contributor of uniqueContributors) {
     try {
       const { error } = await supabase
         .from('contributors')
-        .insert({
+        .upsert({
           github_login: contributor.github_login,
           canonical_name: contributor.canonical_name,
           email: contributor.email
-        });
+        }, { onConflict: 'github_login' });
       
       if (error) {
-        if (error.code === '23505') {
-          // Duplicate key error - expected
-          totalSkipped++;
-        } else {
-          throw error;
-        }
+        console.warn(`⚠️ Error inserting contributor ${contributor.github_login}:`, error);
+        totalSkipped++;
       } else {
         totalInserted++;
       }
@@ -816,110 +788,7 @@ async function insertContributorsWithDuplicates(contributors) {
     }
   }
   
-  console.log(`👥 Contributors: ${totalInserted} inserted, ${totalSkipped} skipped duplicates`);
-}
-
-async function deduplicateContributors() {
-  console.log('🔧 Running contributor deduplication...');
-  
-  try {
-    // Get all contributors
-    const { data: contributors, error } = await supabase
-      .from('contributors')
-      .select('*')
-      .order('id');
-    
-    if (error) throw error;
-    
-    // Get duplicate mappings
-    const { data: duplicateMappings, error: dupError } = await supabase
-      .from('duplicate_contributors')
-      .select('*');
-    
-    if (dupError) throw dupError;
-    
-    let mergeCount = 0;
-    const processedContributors = new Set();
-    
-    // Process each duplicate mapping
-    for (const mapping of duplicateMappings) {
-      const matchingContributors = contributors.filter(c => 
-        !processedContributors.has(c.id) && (
-          mapping.github_usernames.includes(c.github_login) ||
-          mapping.emails.includes(c.email) ||
-          mapping.names.includes(c.canonical_name) ||
-          findBestMatch(c.github_login, mapping.github_usernames) >= 0.80 ||
-          findBestMatch(c.email, mapping.emails) >= 0.80
-        )
-      );
-      
-      if (matchingContributors.length > 1) {
-        console.log(`🔄 Merging ${matchingContributors.length} contributors for ${mapping.primary_github_login}`);
-        
-        // Find or create primary contributor
-        let primary = matchingContributors.find(c => c.github_login === mapping.primary_github_login);
-        
-        if (!primary) {
-          // Create primary contributor if doesn't exist
-          const { data: newPrimary, error: createError } = await supabase
-            .from('contributors')
-            .insert({
-              github_login: mapping.primary_github_login,
-              canonical_name: mapping.primary_github_login,
-              email: matchingContributors[0].email
-            })
-            .select()
-            .single();
-          
-          if (createError) throw createError;
-          primary = newPrimary;
-        }
-        
-        // Merge all others into primary
-        const duplicates = matchingContributors.filter(c => c.id !== primary.id);
-        
-        for (const duplicate of duplicates) {
-          await mergeContributorData(duplicate.id, primary.id);
-          processedContributors.add(duplicate.id);
-        }
-        
-        processedContributors.add(primary.id);
-        mergeCount++;
-      }
-    }
-    
-    console.log(`✅ Deduplication completed: ${mergeCount} merge operations`);
-    
-  } catch (error) {
-    console.error('❌ Error during deduplication:', error);
-    // Don't throw - continue with workflow
-  }
-}
-
-async function mergeContributorData(fromId, toId) {
-  try {
-    // Update contributions
-    await supabase
-      .from('contributions')
-      .update({ contributor_id: toId })
-      .eq('contributor_id', fromId);
-    
-    // Update review comments
-    await supabase
-      .from('review_comments')
-      .update({ contributor_id: toId })
-      .eq('contributor_id', fromId);
-    
-    // Delete duplicate contributor
-    await supabase
-      .from('contributors')
-      .delete()
-      .eq('id', fromId);
-    
-    console.log(`🔗 Merged contributor ${fromId} -> ${toId}`);
-  } catch (error) {
-    console.error(`Error merging contributor ${fromId} to ${toId}:`, error);
-  }
+  console.log(`👥 Contributors: ${totalInserted} inserted/updated, ${totalSkipped} failed`);
 }
 
 async function insertFiles(files) {
@@ -932,40 +801,32 @@ async function insertFiles(files) {
     new Map(files.map(f => [f.canonical_path, f])).values()
   );
   
-  const batchSize = 100;
   let totalInserted = 0;
   let totalSkipped = 0;
   
-  for (let i = 0; i < uniqueFiles.length; i += batchSize) {
-    const batch = uniqueFiles.slice(i, i + batchSize);
-    
-    // Insert files one by one to handle duplicates
-    for (const file of batch) {
-      try {
-        const { error } = await supabase
-          .from('files')
-          .insert({
-            canonical_path: file.canonical_path,
-            current_path: file.current_path
-          });
-        
-        if (error) {
-          if (error.code === '23505') {
-            totalSkipped++;
-          } else {
-            throw error;
-          }
-        } else {
-          totalInserted++;
-        }
-      } catch (error) {
-        console.error(`Error inserting file ${file.canonical_path}:`, error);
+  // Insert files one by one to handle duplicates gracefully
+  for (const file of uniqueFiles) {
+    try {
+      const { error } = await supabase
+        .from('files')
+        .upsert({
+          canonical_path: file.canonical_path,
+          current_path: file.current_path
+        }, { onConflict: 'canonical_path' });
+      
+      if (error) {
+        console.warn(`⚠️ Error inserting file ${file.canonical_path}:`, error);
         totalSkipped++;
+      } else {
+        totalInserted++;
       }
+    } catch (error) {
+      console.error(`Error inserting file ${file.canonical_path}:`, error);
+      totalSkipped++;
     }
   }
   
-  console.log(`📁 Files: ${totalInserted} inserted, ${totalSkipped} skipped duplicates`);
+  console.log(`📁 Files: ${totalInserted} inserted/updated, ${totalSkipped} failed`);
 }
 
 async function insertContributions(contributions) {
@@ -982,6 +843,11 @@ async function insertContributions(contributions) {
     .from('files')
     .select('id, canonical_path');
   
+  if (!dbContributors || !dbFiles) {
+    console.error('❌ Failed to fetch contributors or files from database');
+    return;
+  }
+  
   const contributorMap = new Map();
   dbContributors.forEach(c => {
     contributorMap.set(c.github_login, c.id);
@@ -996,9 +862,16 @@ async function insertContributions(contributions) {
   const mappedContributions = [];
   let skipped = 0;
   
-  for (const contrib of contributions) {
-    const contributorId = contributorMap.get(contrib.contributor_email) || 
-                         contributorMap.get(contrib.contributor_login);
+  // Remove duplicates based on contribution_key if available
+  const uniqueContributions = contributions.filter((contrib, index, self) => {
+    if (contrib.contribution_key) {
+      return index === self.findIndex(c => c.contribution_key === contrib.contribution_key);
+    }
+    return true;
+  });
+  
+  for (const contrib of uniqueContributions) {
+    const contributorId = contributorMap.get(contrib.contributor_key);
     const fileId = fileMap.get(contrib.file_path);
     
     if (contributorId && fileId) {
@@ -1014,6 +887,7 @@ async function insertContributions(contributions) {
         pr_number: contrib.pr_number || null
       });
     } else {
+      console.warn(`⚠️ Cannot map contribution: contributor_key=${contrib.contributor_key}, file_path=${contrib.file_path}`);
       skipped++;
     }
   }
@@ -1023,23 +897,29 @@ async function insertContributions(contributions) {
   // Insert in batches
   const batchSize = 500;
   let totalInserted = 0;
+  let totalFailed = 0;
   
   for (let i = 0; i < mappedContributions.length; i += batchSize) {
     const batch = mappedContributions.slice(i, i + batchSize);
     
     const { error } = await supabase
       .from('contributions')
-      .insert(batch);
+      .upsert(batch, { 
+        onConflict: 'contributor_id,file_id,contribution_date,activity_id,lines_modified',
+        ignoreDuplicates: true 
+      });
     
     if (error) {
-      console.error('Error inserting contributions batch:', error);
+      console.warn(`⚠️ Error inserting contributions batch ${Math.floor(i/batchSize) + 1}:`, error);
+      totalFailed += batch.length;
     } else {
       totalInserted += batch.length;
-      console.log(`🔗 Inserted contributions batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(mappedContributions.length/batchSize)}`);
     }
+    
+    console.log(`🔗 Processed contributions batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(mappedContributions.length/batchSize)}`);
   }
   
-  console.log(`✅ Successfully inserted ${totalInserted} contributions`);
+  console.log(`✅ Contributions: ${totalInserted} inserted/updated, ${totalFailed} failed`);
 }
 
 async function insertReviewComments(comments) {
@@ -1052,6 +932,11 @@ async function insertReviewComments(comments) {
     .from('contributors')
     .select('id, github_login');
   
+  if (!dbContributors) {
+    console.error('❌ Failed to fetch contributors from database');
+    return;
+  }
+  
   const contributorMap = new Map();
   dbContributors.forEach(c => {
     contributorMap.set(c.github_login, c.id);
@@ -1061,7 +946,7 @@ async function insertReviewComments(comments) {
   let skipped = 0;
   
   for (const comment of comments) {
-    const contributorId = contributorMap.get(comment.contributor_login);
+    const contributorId = contributorMap.get(comment.contributor_key);
     
     if (contributorId) {
       mappedComments.push({
@@ -1071,6 +956,7 @@ async function insertReviewComments(comments) {
         comment_text: comment.comment_text
       });
     } else {
+      console.warn(`⚠️ Cannot map comment: contributor_key=${comment.contributor_key}`);
       skipped++;
     }
   }
@@ -1080,6 +966,7 @@ async function insertReviewComments(comments) {
   // Insert in batches
   const batchSize = 100;
   let totalInserted = 0;
+  let totalFailed = 0;
   
   for (let i = 0; i < mappedComments.length; i += batchSize) {
     const batch = mappedComments.slice(i, i + batchSize);
@@ -1089,14 +976,16 @@ async function insertReviewComments(comments) {
       .insert(batch);
     
     if (error) {
-      console.error('Error inserting review comments batch:', error);
+      console.warn(`⚠️ Error inserting comments batch ${Math.floor(i/batchSize) + 1}:`, error);
+      totalFailed += batch.length;
     } else {
       totalInserted += batch.length;
-      console.log(`💬 Inserted comments batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(mappedComments.length/batchSize)}`);
     }
+    
+    console.log(`💬 Processed comments batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(mappedComments.length/batchSize)}`);
   }
   
-  console.log(`✅ Successfully inserted ${totalInserted} review comments`);
+  console.log(`✅ Review comments: ${totalInserted} inserted, ${totalFailed} failed`);
 }
 
 // Run if called directly
