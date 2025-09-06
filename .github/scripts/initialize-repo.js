@@ -56,6 +56,8 @@ async function processCommits(handleDuplicates) {
     const extendedLogOutput = execSync(`git log --all --pretty=format:"%H|%an|%ae|%ad|%cn|%ce|%cd|%s|%b|%P|%d" --date=iso -5`, { encoding: 'utf8' });
     const extendedCommits = extendedLogOutput.split('\n').filter(line => line.trim());
     
+    // In your processCommits function, add this after the existing logging:
+
     extendedCommits.forEach((line, index) => {
       const parts = line.split('|');
       console.log(`\n--- Commit ${index + 1} ---`);
@@ -67,7 +69,56 @@ async function processCommits(handleDuplicates) {
       console.log(`Parent Hashes: ${parts[9] || '(none - root commit)'}`);
       console.log(`Ref Names: ${parts[10] || '(none)'}`);
     });
-    console.log('----------------\n');
+    
+    // Test GitHub API for unique emails with authentication
+    console.log('\n🔍 Testing GitHub API lookups...');
+    const uniqueEmails = [...new Set(extendedCommits.map(line => line.split('|')[2]))].filter(Boolean);
+    const githubToken = process.env.GITHUB_TOKEN;
+    
+    for (const email of uniqueEmails.slice(0, 3)) {
+      try {
+        const headers = {
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'GitHub-Actions-Bot/1.0'
+        };
+        
+        // Add authentication if token is available
+        if (githubToken) {
+          headers['Authorization'] = `token ${githubToken}`;
+          console.log(`🔑 Using authenticated GitHub API for ${email}`);
+        } else {
+          console.log(`⚠️ No GitHub token - using unauthenticated API for ${email}`);
+        }
+        
+        const response = await fetch(`https://api.github.com/search/users?q=${encodeURIComponent(email)}+in:email`, {
+          headers
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`📧 ${email}: ${data.total_count} users found`);
+          if (data.items && data.items.length > 0) {
+            data.items.slice(0, 2).forEach((user, i) => {
+              console.log(`   ${i + 1}. ${user.login} (${user.html_url})`);
+              console.log(`      Name: ${user.name || 'Not provided'}`);
+              console.log(`      Public repos: ${user.public_repos || 'N/A'}`);
+            });
+          }
+        } else {
+          console.log(`📧 ${email}: API Error ${response.status} - ${response.statusText}`);
+          if (response.status === 403) {
+            console.log(`   Rate limit may be exceeded`);
+          }
+        }
+      } catch (error) {
+        console.log(`📧 ${email}: ${error.message}`);
+      }
+      
+      // Rate limiting delay (can be shorter with authentication)
+      await new Promise(resolve => setTimeout(resolve, githubToken ? 500 : 2000));
+    }
+    
+    console.log('-------------\n');
     
     
     // Get commits that are in PRs to exclude them
