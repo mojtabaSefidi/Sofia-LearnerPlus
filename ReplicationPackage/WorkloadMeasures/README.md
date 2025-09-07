@@ -57,4 +57,4 @@ When the execution is finished, save the output table (with header) to your loca
 
 ### How to calculate the Gini-Workload for each recommender.
 
-To calculate the Gini-Workload outcome for each recommender, run the [WorkloadAUC.r](WorkloadAUC.R) script. 
+To calculate the Gini-Workload outcome for each recommender, update the paths to open reviews of recommenders in [WorkloadAUC.r](WorkloadAUC.R) script and then run it. 
