@@ -3,8 +3,8 @@ name: Assign PR Reviewer
 on:
   pull_request_review_comment:
     types: [created]
-  issue_comment:
-    types: [created]
+  # issue_comment:
+  #   types: [created]
 
 jobs:
   assign-reviewer:
