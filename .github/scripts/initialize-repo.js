@@ -51,153 +51,6 @@ async function processCommits(handleDuplicates) {
     
     console.log(`Found ${commits.length} total commits`);
     
-    // ADD THIS: Get ALL commits (not just first 5)
-    console.log('🔍 Getting all unique contributors...');
-    const allCommitsOutput = execSync(`git log --all --pretty=format:"%H|%an|%ae|%ad|%cn|%ce|%cd|%s|%b|%P|%d" --date=iso`, { encoding: 'utf8' });
-    const allCommits = allCommitsOutput.split('\n').filter(line => line.trim());
-    
-    // Extract unique emails from ALL commits
-    const allUniqueEmails = [...new Set(allCommits.map(line => line.split('|')[2]))].filter(Boolean);
-    const allUniqueNames = [...new Set(allCommits.map(line => line.split('|')[1]))].filter(Boolean);
-    
-    console.log(`📊 Found ${allUniqueEmails.length} unique email addresses across ${allCommits.length} commits`);
-    console.log(`📊 Found ${allUniqueNames.length} unique author names`);
-    
-    // Test GitHub API for ALL unique emails AND names
-    console.log('\n🔍 Testing GitHub API lookups for all unique contributors...');
-    const githubToken = process.env.GITHUB_TOKEN;
-    const foundUsernames = new Map(); // identifier -> username mapping
-    
-    // First try emails (more reliable)
-    console.log('\n--- Searching by EMAIL ---');
-    for (let i = 0; i < allUniqueEmails.length; i++) {
-      const email = allUniqueEmails[i];
-      
-      try {
-        const headers = {
-          'Accept': 'application/vnd.github.v3+json',
-          'User-Agent': 'GitHub-Actions-Bot/1.0'
-        };
-        
-        if (githubToken) {
-          headers['Authorization'] = `token ${githubToken}`;
-        }
-        
-        console.log(`🔍 [${i + 1}/${allUniqueEmails.length}] Email: ${email}`);
-        
-        const response = await fetch(`https://api.github.com/search/users?q=${encodeURIComponent(email)}+in:email`, {
-          headers
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.items && data.items.length > 0) {
-            const username = data.items[0].login;
-            const name = data.items[0].name;
-            foundUsernames.set(email, {
-              username,
-              name,
-              profile: data.items[0].html_url,
-              method: 'email'
-            });
-            console.log(`   ✅ Found: ${username} (${name || 'No name'})`);
-          } else {
-            console.log(`   ❌ No user found by email`);
-          }
-        } else {
-          console.log(`   ⚠️ API Error ${response.status}`);
-        }
-      } catch (error) {
-        console.log(`   ❌ Error: ${error.message}`);
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, githubToken ? 300 : 1500));
-    }
-    
-    // Then try names for emails that didn't match
-    console.log('\n--- Searching by NAME for unmatched emails ---');
-    const unmatchedEmails = allUniqueEmails.filter(email => !foundUsernames.has(email));
-    
-    for (let i = 0; i < unmatchedEmails.length; i++) {
-      const email = unmatchedEmails[i];
-      // Get the corresponding name for this email from commits
-      const commitWithEmail = allCommits.find(line => line.split('|')[2] === email);
-      const authorName = commitWithEmail ? commitWithEmail.split('|')[1] : null;
-      
-      if (!authorName) continue;
-      
-      try {
-        const headers = {
-          'Accept': 'application/vnd.github.v3+json',
-          'User-Agent': 'GitHub-Actions-Bot/1.0'
-        };
-        
-        if (githubToken) {
-          headers['Authorization'] = `token ${githubToken}`;
-        }
-        
-        console.log(`🔍 [${i + 1}/${unmatchedEmails.length}] Name: "${authorName}" (for ${email})`);
-        
-        const response = await (`https://api.github.com/search/users?q=${encodeURIComponent(authorName)}+in:name`, {
-          headers
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.items && data.items.length > 0) {
-            // Show multiple matches since name search is less precise
-            console.log(`   📋 Found ${data.items.length} potential matches:`);
-            data.items.slice(0, 3).forEach((user, idx) => {
-              console.log(`      ${idx + 1}. ${user.login} - "${user.name || 'No name'}" (${user.html_url})`);
-            });
-            
-            // Take the first match (you might want to add more logic here)
-            const bestMatch = data.items[0];
-            foundUsernames.set(email, {
-              username: bestMatch.login,
-              name: bestMatch.name,
-              profile: bestMatch.html_url,
-              method: 'name',
-              confidence: 'low', // Name matches are less reliable
-              totalMatches: data.items.length
-            });
-            console.log(`   ⚠️ Using first match: ${bestMatch.login}`);
-          } else {
-            console.log(`   ❌ No user found by name`);
-          }
-        } else {
-          console.log(`   ⚠️ API Error ${response.status}`);
-        }
-      } catch (error) {
-        console.log(`   ❌ Error: ${error.message}`);
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, githubToken ? 300 : 1500));
-    }
-    
-    // Summary of all found GitHub usernames
-    console.log('\n📋 SUMMARY - All GitHub usernames found:');
-    console.log(`Found GitHub usernames for ${foundUsernames.size} out of ${allUniqueEmails.length} email addresses`);
-    
-    const sortedUsernames = Array.from(foundUsernames.entries())
-      .sort(([emailA], [emailB]) => emailA.localeCompare(emailB));
-    
-    sortedUsernames.forEach(([email, data], index) => {
-      console.log(`${index + 1}. ${data.username} - ${email} (${data.name || 'No name'})`);
-    });
-    
-    // Also show emails without GitHub matches
-    const emailsWithoutGitHub = allUniqueEmails.filter(email => !foundUsernames.has(email));
-    if (emailsWithoutGitHub.length > 0) {
-      console.log(`\n❌ Emails without GitHub matches (${emailsWithoutGitHub.length}):`);
-      emailsWithoutGitHub.forEach((email, index) => {
-        console.log(`${index + 1}. ${email}`);
-      });
-    }
-    
-    console.log('-------------\n');
-    
-    
     // Get commits that are in PRs to exclude them
     const prCommits = await getPRCommitHashes();
     
@@ -876,17 +729,30 @@ async function fetchAllRepoCommits(octokit, context) {
   // console.log(`Name: ${name}`);
   // console.log(`Email: ${email}`);
   // console.log(`Username: ${username}`);
-  const uniqueAuthors = new Map(); // key = username, value = {name, email}
-
+  const uniqueAuthors = new Map(); // key = username, value = { name, email }
+  let nullCounters = { username: 0, name: 0, email: 0 };
+  
   for (const commit of allCommits) {
     const username = commit.author?.login || null;
     const name = commit.commit.author?.name || null;
     const email = commit.commit.author?.email || null;
   
+    // Count nulls
+    if (!username) nullCounters.username++;
+    if (!name) nullCounters.name++;
+    if (!email) nullCounters.email++;
+  
+    // Store unique authors by username (skip if null)
     if (username) {
       uniqueAuthors.set(username, { name, email });
     }
   }
+  
+  console.log("✅ Unique authors:");
+  console.log(Array.from(uniqueAuthors.entries()));
+  
+  console.log("⚠️ Null counters:");
+  console.log(nullCounters);
   
   console.log("✅ Unique authors:");
   console.log(Array.from(uniqueAuthors.entries())); 
@@ -1056,17 +922,11 @@ async function insertContributions(contributions) {
     contributorMap.set(c.github_login, c.id);
     if (c.email) contributorMap.set(c.email, c.id);
   });
-
-  console.log(Array.from(contributorMap.entries()));
-  console.log('---------CONT-------------');
   
   const fileMap = new Map();
   dbFiles.forEach(f => {
     fileMap.set(f.canonical_path, f.id);
   });
-  
-  console.log('Sample files in DB:', dbFiles.slice(0, 10).map(f => f.canonical_path));
-  console.log('---------Files-------------');
 
   const mappedContributions = [];
   let skipped = 0;
