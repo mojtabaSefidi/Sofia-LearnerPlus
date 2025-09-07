@@ -138,7 +138,7 @@ async function processCommits(handleDuplicates) {
         
         console.log(`🔍 [${i + 1}/${unmatchedEmails.length}] Name: "${authorName}" (for ${email})`);
         
-        const response = await fetch(`https://api.github.com/search/users?q=${encodeURIComponent(authorName)}+in:name`, {
+        const response = await (`https://api.github.com/search/users?q=${encodeURIComponent(authorName)}+in:name`, {
           headers
         });
         
@@ -377,6 +377,7 @@ async function processPullRequests(handleDuplicates) {
   
   // Get all PRs
   const allPRs = await fetchAllPRs(octokit, context);
+  const allCMs = await fetchAllRepoCommits(octokit, context);
   
   const pullRequests = [];
   const contributions = [];
@@ -842,6 +843,42 @@ function normalizeName(name) {
     .toLowerCase()
     .trim()
     .replace(/\s+/g, '-') || 'unknown';
+}
+
+async function fetchAllRepoCommits(octokit, context) {
+  const allCommits = [];
+  let page = 1;
+  const perPage = 100;
+
+  while (true) {
+    const { data: commits } = await octokit.rest.repos.listCommits({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      per_page: perPage,
+      page: page,
+    });
+
+    if (commits.length === 0) break;
+
+    allCommits.push(...commits);
+    const commit = allCommits[0];
+
+    // From the commit metadata (always available)
+    const name = commit.commit.author?.name;
+    const email = commit.commit.author?.email;
+    
+    // From the GitHub account (may be null if commit not linked to a user)
+    const username = commit.author?.login;
+    
+    console.log(`Name: ${name}`);
+    console.log(`Email: ${email}`);
+    console.log(`Username: ${username}`);
+    console.log(`📄 Fetched ${commits.length} commits (page ${page})`);
+    page++;
+  }
+
+  console.log(`📊 Found ${allCommits.length} total commits in repository`);
+  return allCommits;
 }
 
 async function fetchAllPRs(octokit, context) {
