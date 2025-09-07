@@ -1,4 +1,4 @@
-Please review the overall replication package [ReadMe File](../README.md) for complete simulation details. The following steps get reviewers' open reviews across projects. Then you should use this data to calculate the final Gini-Workload of reviewers.
+Please review the overall replication package [ReadME File](../README.md) for complete simulation details. The following steps get reviewers' open reviews across projects. Then you should use this data to calculate the final Gini-Workload of reviewers.
 
 ### Get the Open Reviews from the database
 
