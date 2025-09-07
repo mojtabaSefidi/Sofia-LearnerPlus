@@ -717,18 +717,7 @@ async function fetchAllRepoCommits(octokit, context) {
     console.log(`📄 Fetched ${commits.length} commits (page ${page})`);
     page++;
   }
-  // const commit = allCommits[0];
 
-  // // From the commit metadata (always available)
-  // const name = commit.commit.author?.name;
-  // const email = commit.commit.author?.email;
-  
-  // // From the GitHub account (may be null if commit not linked to a user)
-  // const username = commit.author?.login;
-  
-  // console.log(`Name: ${name}`);
-  // console.log(`Email: ${email}`);
-  // console.log(`Username: ${username}`);
   const uniqueAuthors = new Map(); // key = username, value = { name, email }
   let nullCounters = { username: 0, name: 0, email: 0 };
   
@@ -736,6 +725,16 @@ async function fetchAllRepoCommits(octokit, context) {
     const username = commit.author?.login || null;
     const name = commit.commit.author?.name || null;
     const email = commit.commit.author?.email || null;
+  
+    // If any field is null, log the whole record
+    if (!username || !name || !email) {
+      console.log("⚠️ Null detected ->", {
+        username,
+        name,
+        email,
+        sha: commit.sha, // optional: commit SHA for debugging
+      });
+    }
   
     // Count nulls
     if (!username) nullCounters.username++;
@@ -748,14 +747,9 @@ async function fetchAllRepoCommits(octokit, context) {
     }
   }
   
-  console.log("✅ Unique authors:");
-  console.log(Array.from(uniqueAuthors.entries()));
-  
-  console.log("⚠️ Null counters:");
-  console.log(nullCounters);
-  
-  console.log("✅ Unique authors:");
-  console.log(Array.from(uniqueAuthors.entries())); 
+  console.log("⚠️ Null counters:", nullCounters);
+  console.log("✅ Unique authors:", Array.from(uniqueAuthors.entries()));
+ 
   
   console.log(`📊 Found ${allCommits.length} total commits in repository`);
   return allCommits;
