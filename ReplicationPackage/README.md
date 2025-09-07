@@ -18,16 +18,16 @@ The overall steps are
 2) Open and modify each configuration file in the [config directory](./config) to set up the connection with the database. You have to provide the server address along with the credentials to your local SQL server. The following snippet shows a sample of how the connection string should be set.
 
 ```json
- {
-	"ConnectionStrings": {
-	  "RelationalGit": "Server=ip_db_server;User Id=user_name;Password=pass_word;Database=Roslyn_PlusPlus"
-	},
- }
+
+"ConnectionStrings": {
+  "RelationalGit": "Server=ip_db_server;User Id=user_name;Password=pass_word;Database=Roslyn_PlusPlus"
+},
+
 ```
 
 ## Run the Simulations
 
-1) Open [simulations.ps1](simulations.ps1) using an editor and update the paths to the configuration files. For instance, each of the following variables contains the absolute path of the corresponding configuration file for the first research question.
+1) Open [simulations.ps1](simulations.ps1) using an editor and update all the paths to the configuration files. For instance, each of the following variables contains the absolute path of the corresponding configuration file for the first research question.
 
 
 ```PowerShell
@@ -53,63 +53,55 @@ This script simulates the performance of all the defined reviewer recommendation
 The following sections describe the commands needed to run simulations for each research question. For each simulation, a sample is provided that illustrates how to run the simulation using the tool. To run the simulations for each of the following research questions, you need to open the [source code](../src/RelationalGit.sln) as a project in your IDE like [Microsoft Visual Studio](https://visualstudio.microsoft.com/downloads/) and run the corresponding commands for each RQ (Debug → RelationalGit Debug Properties → Create a new profile → Project → insert the commands in ```Command line arguments``` box). 
 
 ### Seeded Random Replacement Initialization:
-On PRKRs, to replicate the performance of recommenders at the replacement level, you should apply the following change to each project's config file. In this way, one of the reviewers of PRKRs will be randomly (seeded) replaced with the top-recommended candidate.
+To run the simulations, you should first run the cHRev recommender to obtain the seeded indices for all the PRs in each project. By running the following command, the simulator will randomly replace one of the actual reviewers with the top candidate from cHRev. We will use these seeded indices in the following RQs to have a fair comparison between recommenders, as all of them replace the same reviewer.
+
+```PowerShell
+# cHRev Recommender
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy cHRev --simulation-type "Random" --conf-path <path_to_replace_all_config_file>
+```
 
 ### Simulation RQ1, Baseline: On PRKRs, how well do existing recommenders perform?
 
-On PRKRs, to replicate the performance of recommenders at the replacement level, you should apply the following change to each project's config file. In this way, one of the reviewers of PRKRs will be randomly (seeded) replaced with the top-recommended candidate. 
+By choosing the following selection strategy in the configuration file, the recommenders randomly (seeded) replace one of the reviewers of PRKRs with the top-recommended candidate. 
 
 ```
 "PullRequestReviewerSelectionStrategy" : "0:nothing-nothing,-:farreplacerandom-1",
 ```
 
-In the next step, you should run the cHRev to obtain the seeded indices for all the PRs.
+To replicate the performance of recommenders at the replacement level on PRKRs, you should run the following commands for each project to simulate the performance of recommenders on PRKRs. 
 
 ```PowerShell
-# cHRev Recommender
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy cHRev --simulation-type "Random" --conf-path <path_to_replace_all_config_file>
-```
-
-Then, you should run the following commands for each project to simulate the performance of recommenders on PRKRs. 
-
-```PowerShell
-# cHRev Recommender
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy cHRev --simulation-type "Random" --conf-path <path_to_replace_all_config_file>
 # Reality
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy Reality --conf-path <path_to_rq1_config_file>
-# cHRev Recommender
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy cHRev --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
 # AuthorshipRec Recommender
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy AuthorshipRec --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
 # RevOwnRec Recommender
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy RevOwnRec --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
+# cHRev Recommender
+dotnet-rgit --cmd simulate-recommender --recommendation-strategy cHRev --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
 # LearnRec Recommender
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy LearnRec --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
 # RetentionRec Recommender
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy RetentionRec --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
 # TurnoverRec Recommender
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy TurnoverRec --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
-# Sofia Recommender
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy Sofia --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
 #WhoDo recommender
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy WhoDo --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
-# SofiaWL Recommender
-dotnet-rgit --cmd simulate-recommender --recommendation-strategy SofiaWL --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
 ```
 
-**Note**: In order to select between ```Random``` and ```SeededRandom```, adjust the ```--simulation-type``` command. If you want to run the seeded version, set the value of ```--simulation-type``` to ```Random``` for **cHRev** and all the other algorithms to ```SeededRandom```. If you wish to run the random version, set the value of ```--simulation-type``` to ```Random``` for all the algorithms.
+**Note**: In order to select between ```Random``` and ```SeededRandom```, adjust the ```--simulation-type``` command. If you set the value of ```--simulation-type``` to ```SeededRandom``` for recommenders, they will replace the same actual reviewers in all simulations.
 
 ---
 
 ### Simulation RQ2, Recommenders++: How does adding a reviewer on PRKRs impact the turnover risk and the amount of extra reviewing work?
 
-To run the Recommenders++ strategy, you should apply the following change to the config file of each project.
+Based on the following strategy in the configuration file, the recommenders will add the top candidate to the review process. 
 
 ```
 "PullRequestReviewerSelectionStrategy" : "0:nothing-nothing,-:add-1",
 ```
 
-In the next step, you should run the following commands to simulate each recommender. Since the Recommenders++ strategy suggests an extra reviewer for all PRKRs and doesn't do any replacement, there is no need to use the ```--simulation-type``` command.
+To simulate the performance of recommenders, you should run the following commands one by one. Since the Recommenders++ strategy suggests an extra reviewer for all PRKRs and doesn't do any replacement, there is no need to use the ```--simulation-type``` command.
 
 ```PowerShell
 # AuthorshipRec++ Recommender
@@ -131,13 +123,13 @@ dotnet-rgit --cmd simulate-recommender --recommendation-strategy WhoDo --conf-pa
 
 ### Simulation RQ3, FarAwareRec: What is the impact of adding a reviewer on abandoned files and replacing a reviewer on hoarded files for PRKRs?
 
-To run the FarAwareRec approach, you should apply the following change to each project's config files.
+FarAwareRec adds an extra reviewer for PRs with abandoned files and suggests a seeded random replacement for one of the reviewers in PRs containing hoarded files.
 
 ```
 "PullRequestReviewerSelectionStrategy" : "0:nothing-nothing,-:addAndReplace-1",
 ```
 
-Then, you should simulate the FarAwareRec recommender for each project. The ```--simulation-type``` command forces the recommender to replace the same reviewer in all the simulations.
+To simulate the performance of the FarAwareRec recommender in each project, you should run the following commands. The ``--simulation-type `` command forces the recommender to replace the same reviewer in all the simulations.
 
 ```PowerShell
 # FarAwareRec recommender for CoreFX
@@ -155,19 +147,13 @@ dotnet-rgit --cmd simulate-recommender --recommendation-strategy TurnoverRec --s
 
 ### Simulation RQ4, HoardedXRec: Can we balance the trade-off between &#916;FaR and Reviewer++ when we recommend an extra reviewer for PRKRs?
 
-To run the HoardedXRec strategy, you should apply the following changes to the config file of each project.
-
-```
-"PullRequestReviewerSelectionStrategy" : "0:nothing-nothing,-:addHoarded_X-1",
-```
-
-The X parameter should be adjusted based on the recommender. In our paper, we run simulations for X = {2,3,4}. For example, if you want to run the **Hoarded2Rec** recommender, you should change the config files as follows:
+The HoardedXRec recommender adds a learner to the pull requests containing abandoned files or those with X or more hoarded files. It also recommends a new reviewer when a pull request includes at least one but fewer than X hoarded files. The X parameter should be adjusted based on the project. In our paper, we run simulations for X = {2,3,4}. For example, if you want to run the **Hoarded2Rec** recommender, you should select the selection strategy in the config files as follows.
 
 ```
 "PullRequestReviewerSelectionStrategy" : "0:nothing-nothing,-:addHoarded_2-1",
 ```
 
-After adjusting the config files for all projects, you should run the HoardedXRec approach for each project and X = {2,3,4}. 
+To replicate the performance of these recommenders, you should run the following commands.
 
 ```PowerShell
 # HoardedXRec recommender for CoreFX
@@ -200,7 +186,7 @@ WHERE EndDateTime > StartDateTime
 ORDER BY StartDateTime DESC
 ```
 
-To get your simulation results you should run the analyzer using the following command. Substitute the ```<rec_sim_id>``` variable with the Id of your desired recommender, and compare the recommender performance with the actual values, ```<reality_id>```. Note that you can add multiple simulation IDs and separate them using space.
+To get your simulation results, you should run the analyzer using the following command. Substitute the ```<rec_sim_id>``` variable with the Id of your desired recommender, and compare the recommender performance with the actual values, ```<reality_id>```. Note that you can add multiple simulation IDs and separate them using a space.
 You should also substitute ```<path_to_result>``` and ```<path_to_config_file>``` variables with the path where you want to save the results and the config file of the corresponding RQ and project.
 
 ```PowerShell
