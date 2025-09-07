@@ -863,6 +863,10 @@ async function fetchAllPRs(octokit, context) {
     if (prs.length === 0) break;
     
     allPRs.push(...prs);
+    const { data: user } = await octokit.rest.users.getByUsername({
+      username: allPRs[0].user.login
+    });
+    console.log(user.email); // might be null if private
     console.log(`📄 Fetched ${prs.length} PRs (page ${page})`);
     page++;
   }
