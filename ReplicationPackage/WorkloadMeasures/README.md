@@ -2,7 +2,7 @@ Please review the overall replication package [ReadMe File](../README.md) for co
 
 ### Get the Open Reviews from the database
 
-After running the simulations, you should use the number of open reviews for each reviewer to calculate the Gini-Workload. For each recommender, you should replace the ``` <rec-sim-id> ``` with its simulation IDs in each project. The following query generates the table for the number of open reviews for each reviewer.
+After running the simulations, you need the number of open reviews for each reviewer to calculate the Gini-Workload. For each recommender, you should replace the ``` <rec-sim-id> ``` with its corresponding simulation IDs in each project. The following query generates the table for the number of open reviews for each reviewer.
 
 ```SQL
 WITH OpenReview AS (
@@ -12,31 +12,31 @@ WITH OpenReview AS (
         COUNT(DISTINCT pullRequestId) AS pulls
     FROM (
         SELECT 'CoreFX' AS Project, NormalizedName, pullRequestId, DateTime
-        FROM [CoreFX].[dbo].[DeveloperReviews]
+        FROM [CoreFX_PlusPlus].[dbo].[DeveloperReviews]
         WHERE SimulationId = <rec-sim-id>
         
         UNION ALL
         
         SELECT 'CoreCLR' AS Project, NormalizedName, pullRequestId, DateTime
-        FROM [CoreCLR].[dbo].[DeveloperReviews]
+        FROM [CoreCLR_PlusPlus].[dbo].[DeveloperReviews]
         WHERE SimulationId = <rec-sim-id>
         
         UNION ALL
         
         SELECT 'Roslyn' AS Project, NormalizedName, pullRequestId, DateTime
-        FROM [Roslyn].[dbo].[DeveloperReviews]
+        FROM [Roslyn_PlusPlus].[dbo].[DeveloperReviews]
         WHERE SimulationId = <rec-sim-id>
         
         UNION ALL
         
         SELECT 'Rust' AS Project, NormalizedName, pullRequestId, DateTime
-        FROM [Rust].[dbo].[DeveloperReviews]
+        FROM [Rust_PlusPlus].[dbo].[DeveloperReviews]
         WHERE SimulationId = <rec-sim-id>
         
         UNION ALL
         
         SELECT 'Kubernetes' AS Project, NormalizedName, pullRequestId, DateTime
-        FROM [kubernetes].[dbo].[DeveloperReviews]
+        FROM [Kubernetes_PlusPlus].[dbo].[DeveloperReviews]
         WHERE SimulationId = <rec-sim-id>
     ) AS AllProjects
     GROUP BY Project, DATEPART(YEAR, DateTime), DATEPART(QUARTER, DateTime), NormalizedName
@@ -53,8 +53,8 @@ ORDER BY PullIndex;
 
 ```
 
-Note: This query takes about 8~10 minutes to run for each recommender. The data from our simulations is available in [ResultsCSV](../ResultsCSV/WorkloadAUC/Simulated/) Directory.
+When the execution is finished, save the output table (with header) to your local hard drive. This query takes about 1~2 minutes to run for each recommender. The data from our simulations is available in [ResultsCSV](../ResultsCSV/WorkloadAUC/Simulated/) Directory.
 
 ### How to calculate the Gini-Workload for each recommender.
 
-To calculate the Gini-Workload outcome for each recommender, you should run the [WorkloadAUC.r](WorkloadAUC.R) script. 
+To calculate the Gini-Workload outcome for each recommender, run the [WorkloadAUC.r](WorkloadAUC.R) script. 
