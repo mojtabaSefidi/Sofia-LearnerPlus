@@ -2,47 +2,43 @@
 
 The overall steps are
 
-1. Install Relational Git
+1. Install the dependencies and ```SofiaWL-LearnerPlusPlus``` package
 2. Get the Database
 3. Run the Simulations for each research question
 4. Dump the Simulation Data to CSV
 5. Calculate the outcome measures: Expertise, Gini-Workload, Files at Risk to Turnover (FaR), and Rev++
 
-## Install Relational Git
+## Install Dependencies
 
-1) [Install](../README.md) the Relational Git and its dependencies.
+1) Make sure you [download and install](../README.md) the ```SofiaWL-LearnerPlusPlus``` package and its dependencies.
 
 ## Get the Database
 
-1) Restore the data backup into MS SQL Server from [Figshare](https://figshare.com/s/b79fc69acad8e11be31a). There is a separate database for each studied project. Note that the databases are approximately 2 GB in size.
-2) Copy the configuration files and simulation.ps1, which are provided in the replication package.
-3) Open and modify each configuration file to set the connection string. You need to provide the server address along with the credentials. The following snippet shows a sample of how the connection string should be set.
+1) Download and restore the database backup into your local MS SQL Server from [Figshare](https://figshare.com/s/b79fc69acad8e11be31a). There is a separate database for each studied project, and you should restore all of them. To restore a database from a ```.bacpac``` file, start by opening SQL Server Management Studio (SSMS) and connecting to your local SQL Server instance. In the Object Explorer, right-click on the Databases node and choose Import Data-tier Application. From there, click Browse to locate the ```.bacpac``` file on your local disk. Once you’ve selected the file, follow the wizard by clicking Next, reviewing the steps, and then clicking Finish to complete the import process. This will restore your database and make it available in your SQL Server instance. Note that the databases are approximately 2 GB in size.
+2) Open and modify each configuration file in the [config directory](./config) to set up the connection with the database. You have to provide the server address along with the credentials to your local SQL server. The following snippet shows a sample of how the connection string should be set.
 
 ```json
  {
 	"ConnectionStrings": {
 	  "RelationalGit": "Server=ip_db_server;User Id=user_name;Password=pass_word;Database=Roslyn_PlusPlus"
 	},
-	"Mining":{
- 		
-  	}
  }
 ```
 
 ## Run the Simulations
 
-1) Open [simulations.ps1](simulations.ps1) using an editor and make sure the corresponding config variables for each research question are defined in the file and refer to the correct location. For instance, each of the following variables contains the absolute path of the corresponding configuration file for the first research question.
+1) Open [simulations.ps1](simulations.ps1) using an editor and update the paths to the configuration files. For instance, each of the following variables contains the absolute path of the corresponding configuration file for the first research question.
 
 
 ```PowerShell
-$corefx_conf_RQ1 = "RQ1/absolute/path/to/corefx_conf.json"
-$coreclr_conf_RQ1 = "RQ1/absolute/path/to/coreclr_conf.json"
-$roslyn_conf_RQ1 = "RQ1/absolute/path/to/roslyn_conf.json"
-$rust_conf_RQ1 = "RQ1/absolute/path/to/rust_conf.json"
-$kubernetes_conf_RQ1 = "RQ1/absolute/path/to/kubernetes_conf.json"
+$corefx_conf_RQ1 = "\absolute\path\to\Replace_Risky\corefx_conf.json"
+$coreclr_conf_RQ1 = "\absolute\path\to\Replace_Risky\coreclr_conf.json"
+$roslyn_conf_RQ1 = "\absolute\path\to\Replace_Risky\roslyn_conf.json"
+$rust_conf_RQ1 = "\absolute\path\to\Replace_Risky\rust_conf.json"
+$kubernetes_conf_RQ1 = "\absolute\path\to\Replace_Risky\kubernetes_conf.json"
 ```
 
-2) Run the [simulations.ps1](simulations.ps1) script. Open PowerShell and run the following command in the directory of the file
+2) Open PowerShell and run the [simulations.ps1](simulations.ps1) script.
 
 ``` PowerShell
 ./simulations.ps1
@@ -50,13 +46,14 @@ $kubernetes_conf_RQ1 = "RQ1/absolute/path/to/kubernetes_conf.json"
 
 This script simulates the performance of all the defined reviewer recommendation algorithms across all projects.
 
-**Note**: Make sure you have set the PowerShell [execution policy](https://superuser.com/questions/106360/how-to-enable-execution-of-powershell-scripts) to **Unrestricted** or **RemoteAssigned**.
+**Note**: if you get any error, make sure you have set the PowerShell [execution policy](https://superuser.com/questions/106360/how-to-enable-execution-of-powershell-scripts) to **Unrestricted** or **RemoteAssigned**.
 
 ## If you want to run the simulations separately for each RQ:
 
-The following sections describe the commands needed to run simulations for each research question. For each simulation, a sample is provided that illustrates how to run the simulation using the tool.
+The following sections describe the commands needed to run simulations for each research question. For each simulation, a sample is provided that illustrates how to run the simulation using the tool. To run the simulations for each of the following research questions, you need to open the [source code](../src/RelationalGit.sln) as a project in your IDE like [Microsoft Visual Studio](https://visualstudio.microsoft.com/downloads/) and run the corresponding commands for each RQ (Debug → RelationalGit Debug Properties → Create a new profile → Project → insert the commands in ```Command line arguments``` box). 
 
-**Note:** To run the simulations for each of the following research questions, you need to change the config file of all three projects. To avoid confusion, we recommend creating a separate configuration file for each research question.
+### Seeded Random Replacement Initialization:
+On PRKRs, to replicate the performance of recommenders at the replacement level, you should apply the following change to each project's config file. In this way, one of the reviewers of PRKRs will be randomly (seeded) replaced with the top-recommended candidate.
 
 ### Simulation RQ1, Baseline: On PRKRs, how well do existing recommenders perform?
 
