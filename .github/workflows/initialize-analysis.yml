@@ -68,7 +68,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-      issues: read
+      issues: write
       repository-projects: read
       actions: read
 
