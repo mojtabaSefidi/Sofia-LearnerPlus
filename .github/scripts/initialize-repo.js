@@ -861,22 +861,36 @@ async function fetchAllRepoCommits(octokit, context) {
     if (commits.length === 0) break;
 
     allCommits.push(...commits);
-    const commit = allCommits[0];
-
-    // From the commit metadata (always available)
-    const name = commit.commit.author?.name;
-    const email = commit.commit.author?.email;
-    
-    // From the GitHub account (may be null if commit not linked to a user)
-    const username = commit.author?.login;
-    
-    console.log(`Name: ${name}`);
-    console.log(`Email: ${email}`);
-    console.log(`Username: ${username}`);
     console.log(`📄 Fetched ${commits.length} commits (page ${page})`);
     page++;
   }
+  // const commit = allCommits[0];
 
+  // // From the commit metadata (always available)
+  // const name = commit.commit.author?.name;
+  // const email = commit.commit.author?.email;
+  
+  // // From the GitHub account (may be null if commit not linked to a user)
+  // const username = commit.author?.login;
+  
+  // console.log(`Name: ${name}`);
+  // console.log(`Email: ${email}`);
+  // console.log(`Username: ${username}`);
+  const uniqueAuthors = new Map(); // key = username, value = {name, email}
+
+  for (const commit of allCommits) {
+    const username = commit.author?.login || null;
+    const name = commit.commit.author?.name || null;
+    const email = commit.commit.author?.email || null;
+  
+    if (username) {
+      uniqueAuthors.set(username, { name, email });
+    }
+  }
+  
+  console.log("✅ Unique authors:");
+  console.log(Array.from(uniqueAuthors.entries())); 
+  
   console.log(`📊 Found ${allCommits.length} total commits in repository`);
   return allCommits;
 }
