@@ -72,8 +72,8 @@ async function processAllCommits() {
   
   // Insert data
   await insertContributors(contributors);
-  await insertFiles(files);
-  await insertContributions(contributions);
+  // await insertFiles(files);
+  // await insertContributions(contributions);
   
   return { contributors, files, contributions };
 }
@@ -307,6 +307,9 @@ async function processPullRequests() {
       if (pr.draft) continue; // Skip draft PRs
       
       const prResult = await processSinglePR(pr, octokit, context);
+      console.log("-----PR Results------")
+      console.log(JSON.stringify(prResult, null, 2));
+      console.log("-----PR Results------")
       
       pullRequests.push(prResult.prData);
       
