@@ -750,7 +750,7 @@ async function fetchAllRepoCommits(octokit, context) {
   console.log("⚠️ Null counters:", nullCounters);
   console.log("✅ Unique authors:", Array.from(uniqueAuthors.entries()));
  
-  console.log(allCommits[0].message)
+  console.log(allCommits[0].commit.message)
   console.log(`📊 Found ${allCommits.length} total commits in repository`);
   return allCommits;
 }
