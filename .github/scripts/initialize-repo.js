@@ -147,6 +147,51 @@ async function resolveContributors(allCommits, contributorsMap, octokit) {
   }
 }
 
+async function resolveReviewerContributor(username, octokit) {
+  // First check if contributor exists in DB by username
+  const { data: existingByUsername } = await supabase
+    .from('contributors')
+    .select('id, github_login, canonical_name, email')
+    .eq('github_login', username)
+    .single();
+  
+  if (existingByUsername) {
+    return existingByUsername;
+  }
+  
+  // Not found by username, try to get email from GitHub API
+  let email = null;
+  let name = username;
+  
+  try {
+    const { data: user } = await octokit.rest.users.getByUsername({ username });
+    email = user.email;
+    name = user.name || username;
+  } catch (error) {
+    console.warn(`⚠️ Could not fetch user data for reviewer ${username}`);
+  }
+  
+  // If we have email, check DB by email
+  if (email) {
+    const { data: existingByEmail } = await supabase
+      .from('contributors')
+      .select('id, github_login, canonical_name, email')
+      .eq('email', email)
+      .single();
+    
+    if (existingByEmail) {
+      return existingByEmail;
+    }
+  }
+  
+  // Not found in DB, return new contributor data for insertion
+  return {
+    github_login: username,
+    canonical_name: name,
+    email: email
+  };
+}
+
 async function processCommitContribution(commit, contributorsMap, filesMap, contributions) {
   const username = commit.author.login;
   const contributor = contributorsMap.get(username);
@@ -183,23 +228,40 @@ async function processCommitContribution(commit, contributorsMap, filesMap, cont
 
 async function getCommitFileChanges(commitHash) {
   try {
+    const nameStatusOutput = execSync(`git show ${commitHash} --name-status --format=""`, { encoding: 'utf8' });
     const numStatOutput = execSync(`git show ${commitHash} --numstat --format=""`, { encoding: 'utf8' });
     
     const files = [];
     const numStatLines = numStatOutput.split('\n').filter(line => line.trim());
+    const nameStatusLines = nameStatusOutput.split('\n').filter(line => line.trim());
     
+    // Parse numstat for line changes
+    const numStatMap = new Map();
     numStatLines.forEach(line => {
       const parts = line.split('\t');
       if (parts.length >= 3) {
         const filename = parts[2];
         const added = parts[0] === '-' ? 0 : parseInt(parts[0]) || 0;
         const deleted = parts[1] === '-' ? 0 : parseInt(parts[1]) || 0;
+        numStatMap.set(filename, { added, deleted });
+      }
+    });
+    
+    // Parse name-status for file status
+    nameStatusLines.forEach(line => {
+      const parts = line.split('\t');
+      if (parts.length >= 2) {
+        const status = parts[0];
+        const filename = parts[1];
+        
+        const numStat = numStatMap.get(filename) || { added: 0, deleted: 0 };
         
         files.push({
+          status: status[0],
           file: filename,
-          linesAdded: added,
-          linesDeleted: deleted,
-          linesModified: added + deleted
+          linesAdded: numStat.added,
+          linesDeleted: numStat.deleted,
+          linesModified: numStat.added + numStat.deleted
         });
       }
     });
@@ -396,13 +458,10 @@ async function processSinglePR(pr, octokit, context) {
   
   // Process each review submission as a separate contribution
   for (const review of reviewerSubmissions) {
-    // Add reviewer as contributor
+    // Add reviewer as contributor (resolve properly)
     if (!contributors.find(c => c.github_login === review.login)) {
-      contributors.push({
-        github_login: review.login,
-        canonical_name: review.login,
-        email: null
-      });
+      const reviewer = await resolveReviewerContributor(review.login, octokit);
+      contributors.push(reviewer);
     }
     
     // Add review contribution for each file (each review submission is separate)
@@ -472,8 +531,17 @@ async function getPRComments(pr, octokit, context) {
       }))
     ];
     
+    // Track processed contributors to avoid duplicate API calls
+    const processedContributors = new Map();
+    
     for (const comment of allComments) {
       if (isValidComment(comment)) {
+        // Resolve contributor if not already processed
+        if (!processedContributors.has(comment.user.login)) {
+          const contributor = await resolveReviewerContributor(comment.user.login, octokit);
+          processedContributors.set(comment.user.login, contributor);
+        }
+        
         comments.push({
           contributor_key: comment.user.login,
           pr_number: pr.number,
