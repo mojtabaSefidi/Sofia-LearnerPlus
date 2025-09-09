@@ -128,11 +128,11 @@ namespace RelationalGit.Recommendation
             var start = pullRequestContext.PullRequest.CreatedAtDateTime;
             var end = pullRequestContext.PullRequest.ClosedAtDateTime;
             var conflict_commits = commits.Where(a => a.AuthorDateTime >= start && a.AuthorDateTime <= end);
-            if (conflict_commits.Count()> 1)
+            if (conflict_commits.Count() > 1)
             {
                 var i = 9;
             }
-            return count.Count()+conflict_commits.Count();
+            return count.Count() + conflict_commits.Count();
         }
 
         private (double Alpha, double Beta, int RiskOwenershipThreshold, double HoarderRatio) GetParameters(string recommenderOption)

@@ -37,8 +37,8 @@ namespace RelationalGit.Recommendation
                     continue;
                 }
 
-                var scoreTotalComments = reviewerExpertise.TotalComments / (double)fileExpertise.TotalComments;
-                var scoreTotalWorkDays = reviewerExpertise.TotalWorkDays / (double)fileExpertise.TotalWorkDays;
+                var scoreTotalComments = reviewerExpertise.TotalComments / (double) fileExpertise.TotalComments;
+                var scoreTotalWorkDays = reviewerExpertise.TotalWorkDays / (double) fileExpertise.TotalWorkDays;
                 var scoreRecency = 1 / (Math.Abs((reviewerExpertise.RecentWorkDay - fileExpertise.RecentWorkDay).Value.TotalDays) + 1);
                 score += scoreTotalComments + scoreTotalWorkDays + scoreRecency;
             }
