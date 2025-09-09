@@ -149,12 +149,16 @@ async function resolveContributors(allCommits, contributorsMap, octokit) {
 
 async function resolveReviewerContributor(username, octokit) {
   // First check if contributor exists in DB by username
+  
+  console.log(`---------------------`)
+  console.log(`Username: ${username}`)
   const { data: existingByUsername } = await supabase
     .from('contributors')
     .select('id, github_login, canonical_name, email')
     .eq('github_login', username)
     .single();
-  
+
+  console.log(`existingByUsername: ${existingByUsername}`);
   if (existingByUsername) {
     return existingByUsername;
   }
@@ -170,7 +174,8 @@ async function resolveReviewerContributor(username, octokit) {
   } catch (error) {
     console.warn(`⚠️ Could not fetch user data for reviewer ${username}`);
   }
-  
+  console.log(`email: ${email}`)
+  console.log(`name: ${name}`)
   // If we have email, check DB by email
   if (email) {
     const { data: existingByEmail } = await supabase
@@ -179,11 +184,16 @@ async function resolveReviewerContributor(username, octokit) {
       .eq('email', email)
       .single();
     
+    console.log(`existingByEmail: ${existingByEmail}`);
     if (existingByEmail) {
       return existingByEmail;
     }
   }
   
+  console.log('new user:')
+  console.log(`github_login: ${username}`);
+  console.log(`name: ${name}`);
+  console.log(`email: ${email}`);
   // Not found in DB, return new contributor data for insertion
   return {
     github_login: username,
@@ -539,6 +549,7 @@ async function getPRComments(pr, octokit, context) {
         // Resolve contributor if not already processed
         if (!processedContributors.has(comment.user.login)) {
           const contributor = await resolveReviewerContributor(comment.user.login, octokit);
+          
           processedContributors.set(comment.user.login, contributor);
         }
         
