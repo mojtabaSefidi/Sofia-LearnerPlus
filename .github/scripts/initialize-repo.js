@@ -49,7 +49,7 @@ async function processAllCommits() {
   // Fetch all commits using GitHub API
   const allCommits = await fetchAllRepoCommits(octokit, context);
   
-  // Extract unique contributors and resolve missing data
+  // Extract unique contributors and  missing data
   const contributorsMap = new Map();
   await resolveContributors(allCommits, contributorsMap, octokit);
   
@@ -157,8 +157,8 @@ async function resolveReviewerContributor(username, octokit) {
     .select('id, github_login, canonical_name, email')
     .eq('github_login', username)
     .single();
-
-  console.log(`existingByUsername: ${existingByUsername}`);
+  
+  console.log(`existingByUsername: ${JSON.stringify(existingByUsername, null, 2)}`);
   if (existingByUsername) {
     return existingByUsername;
   }
