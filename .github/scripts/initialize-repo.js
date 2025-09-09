@@ -156,7 +156,6 @@ async function resolveReviewerContributor(username, octokit) {
     .eq('github_login', username)
     .single();
   
-  console.log(`existingByUsername: ${JSON.stringify(existingByUsername, null, 2)}`);
   if (existingByUsername) {
     return existingByUsername;
   }
