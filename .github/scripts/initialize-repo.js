@@ -455,11 +455,11 @@ async function processSinglePR(pr, octokit, context) {
   const reviewContributions = [];
   
   // Add PR author
-  contributors.push({
-    github_login: pr.user.login,
-    canonical_name: pr.user.login,
-    email: null
-  });
+  // contributors.push({
+  //   github_login: pr.user.login,
+  //   canonical_name: pr.user.login,
+  //   email: null
+  // });
   
   // Add files
   prFiles.forEach(file => {
