@@ -72,8 +72,8 @@ async function processAllCommits() {
   
   // Insert data
   await insertContributors(contributors);
-  // await insertFiles(files);
-  // await insertContributions(contributions);
+  await insertFiles(files);
+  await insertContributions(contributions);
   
   return { contributors, files, contributions };
 }
@@ -150,8 +150,6 @@ async function resolveContributors(allCommits, contributorsMap, octokit) {
 async function resolveReviewerContributor(username, octokit) {
   // First check if contributor exists in DB by username
   
-  console.log(`---------------------`)
-  console.log(`Username: ${username}`)
   const { data: existingByUsername } = await supabase
     .from('contributors')
     .select('id, github_login, canonical_name, email')
@@ -174,8 +172,7 @@ async function resolveReviewerContributor(username, octokit) {
   } catch (error) {
     console.warn(`⚠️ Could not fetch user data for reviewer ${username}`);
   }
-  console.log(`email: ${email}`)
-  console.log(`name: ${name}`)
+
   // If we have email, check DB by email
   if (email) {
     const { data: existingByEmail } = await supabase
@@ -184,16 +181,11 @@ async function resolveReviewerContributor(username, octokit) {
       .eq('email', email)
       .single();
     
-    console.log(`existingByEmail: ${existingByEmail}`);
     if (existingByEmail) {
       return existingByEmail;
     }
   }
   
-  console.log('new user:')
-  console.log(`github_login: ${username}`);
-  console.log(`name: ${name}`);
-  console.log(`email: ${email}`);
   // Not found in DB, return new contributor data for insertion
   return {
     github_login: username,
@@ -307,9 +299,6 @@ async function processPullRequests() {
       if (pr.draft) continue; // Skip draft PRs
       
       const prResult = await processSinglePR(pr, octokit, context);
-      console.log("-----PR Results------")
-      console.log(JSON.stringify(prResult, null, 2));
-      console.log("-----PR Results------")
       
       pullRequests.push(prResult.prData);
       
