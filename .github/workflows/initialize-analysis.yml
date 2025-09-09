@@ -72,6 +72,18 @@ jobs:
       actions: read
 
     steps:
+      - name: Post Start Comment
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🤖 Sofiabot start collecting data...'
+            })
+            
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
