@@ -3,9 +3,9 @@
 The overall steps are
 
 1. Install the dependencies and ```SofiaWL-LearnerPlusPlus``` package
-2. Get the Database
-3. Run the Simulations for each research question
-4. Dump the Simulation Data to CSV
+2. Download and restore the Database
+3. Run the simulations for each research question
+4. Analyze the simulation results
 5. Calculate the outcome measures: Expertise, Gini-Workload, Files at Risk to Turnover (FaR), and Rev++
 
 ## Install Dependencies
