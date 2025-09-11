@@ -5,7 +5,7 @@ The overall steps are
 1. Install the dependencies and ```SofiaWL-LearnerPlusPlus``` package
 2. Download and restore the Database
 3. Run the simulations for each research question
-4. Analyze the simulation results
+4. Analyze the simulations and get results
 5. Calculate the outcome measures: Expertise, Gini-Workload, Files at Risk to Turnover (FaR), and Rev++
 
 ## Install Dependencies
@@ -89,7 +89,7 @@ dotnet-rgit --cmd simulate-recommender --recommendation-strategy TurnoverRec --s
 dotnet-rgit --cmd simulate-recommender --recommendation-strategy WhoDo --simulation-type "SeededRandom" --conf-path <path_to_rq1_config_file>
 ```
 
-**Note**: In order to select between ```Random``` and ```SeededRandom```, adjust the ```--simulation-type``` command. If you set the value of ```--simulation-type``` to ```SeededRandom``` for recommenders, they will replace the same actual reviewers in all simulations.
+**Note**: In order to select between ```Random``` and ```SeededRandom``` replacement, adjust the ```--simulation-type``` command. If you set the value of ```--simulation-type``` to ```SeededRandom``` for recommenders, they will replace the same actual reviewers in all simulations.
 
 ---
 
@@ -169,7 +169,7 @@ dotnet-rgit --cmd simulate-recommender --recommendation-strategy TurnoverRec --s
 ```
 ---
 
-## Dump the Simulation Data to CSV
+## Analyze Simulations
 
 Log in to the database of each project and run the following command to find the IDs of your simulation.
 
