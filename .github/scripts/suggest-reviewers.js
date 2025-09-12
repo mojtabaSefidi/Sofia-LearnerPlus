@@ -666,7 +666,7 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
       const reviewHistory = `${candidate.reviewFileCount} / ${totalPRFiles}`;
       const newFiles = `${candidate.learns} / ${totalPRFiles}`;
       // const lastContribution = timeAgo(candidate.lastActivityInPRFiles);
-      const lastContribution = candidate.lastActivityInPRFiles;
+      const lastContribution = JSON.stringify(candidate.lastActivityInPRFiles)
       const workloadShare = `${candidate.workloadShare.toFixed(1)}%`;
       
       candidateScoreSection += `| \`${candidate.login}\` | ${authorship} | ${reviewHistory} | ${newFiles} | ${lastContribution} | ${workloadShare} |\n`;
@@ -988,7 +988,6 @@ No developers found with prior experience on these files. Consider assigning rev
   comment += candidateRecordsSection;
   // Suggestions
   comment += recommenderScoreSection;
-  comment += `\n---\n`
   comment += suggestionsSection;
   comment += `\n</details>\n`;
 
