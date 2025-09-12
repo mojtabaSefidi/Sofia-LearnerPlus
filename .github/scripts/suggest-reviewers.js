@@ -41,6 +41,19 @@ const timeAgo = (dateInput) => {
   return result;
 };
 
+function formatLastActivity(lastActivityInfo) {
+  if (!lastActivityInfo || !lastActivityInfo.date) {
+    return 'No Activity';
+  }
+  
+  const now = new Date();
+  const diffMs = now - lastActivityInfo.date;
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  
+  return `${diffDays} days ${diffHours} hours ago (${lastActivityInfo.type})`;
+}
+
 async function suggestReviewers() {
   console.log('🔍 Analyzing PR for detailed reviewer suggestions...');
   
@@ -665,8 +678,7 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
       const authorship = `${candidate.commitFileCount} / ${totalPRFiles}`;
       const reviewHistory = `${candidate.reviewFileCount} / ${totalPRFiles}`;
       const newFiles = `${candidate.learns} / ${totalPRFiles}`;
-      // const lastContribution = timeAgo(candidate.lastActivityInPRFiles);
-      const lastContribution = JSON.stringify(candidate.lastActivityInPRFiles)
+      const lastContribution = formatLastActivity(candidate.lastActivityInPRFiles);
       const workloadShare = `${candidate.workloadShare.toFixed(1)}%`;
       
       candidateScoreSection += `| \`${candidate.login}\` | ${authorship} | ${reviewHistory} | ${newFiles} | ${lastContribution} | ${workloadShare} |\n`;
