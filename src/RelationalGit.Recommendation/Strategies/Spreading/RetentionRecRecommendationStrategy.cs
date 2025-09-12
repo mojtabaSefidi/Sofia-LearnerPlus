@@ -7,10 +7,7 @@ namespace RelationalGit.Recommendation
     {
         private int? _numberOfPeriodsForCalculatingProbabilityOfStay;
 
-        public RetentionRecRecommendationStrategy(string knowledgeSaveReviewerReplacementType, 
-            ILogger logger, 
-            int? numberOfPeriodsForCalculatingProbabilityOfStay, 
-            string pullRequestReviewerSelectionStrategy, 
+        public RetentionRecRecommendationStrategy(string knowledgeSaveReviewerReplacementType, ILogger logger, int? numberOfPeriodsForCalculatingProbabilityOfStay, string pullRequestReviewerSelectionStrategy, 
             bool? addOnlyToUnsafePullrequests,
             string recommenderOption,
             bool changePast,
