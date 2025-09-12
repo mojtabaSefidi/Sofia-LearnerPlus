@@ -665,7 +665,7 @@ function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFile
       const authorship = `${candidate.commitFileCount} / ${totalPRFiles}`;
       const reviewHistory = `${candidate.reviewFileCount} / ${totalPRFiles}`;
       const newFiles = `${candidate.learns} / ${totalPRFiles}`;
-      const lastContribution = timeago(candidate.lastActivityInPRFiles);
+      const lastContribution = timeAgo(candidate.lastActivityInPRFiles);
       const workloadShare = `${candidate.workloadShare.toFixed(1)}%`;
       
       candidateScoreSection += `| \`${candidate.login}\` | ${authorship} | ${reviewHistory} | ${newFiles} | ${lastContribution} | ${workloadShare} |\n`;
