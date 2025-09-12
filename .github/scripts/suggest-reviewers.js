@@ -184,7 +184,8 @@ async function suggestReviewers() {
     const reviewerMetrics = await calculateDetailedReviewerMetrics(prFiles, pr.user.login, achrevByLoginMap, turnoverRecByLoginMap, whoDoByLoginMap);
     
     // Generate comprehensive comment
-    const comment = generateDetailedComment(fileAnalysis, reviewerMetrics, pr.user.login, prFiles);
+    const comment = generateDetailedComment(fileAnalysis, reviewerMetrics, pr.user.login, prFiles, 5);
+
     
     // Post comment
     await octokit.rest.issues.createComment({
@@ -377,11 +378,14 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLogin
         login: contributor.github_login,
         canonical_name: contributor.canonical_name,
         knownFiles: new Set(),
+        commitFiles: new Set(), // NEW: Track files with commits
+        reviewFiles: new Set(), // NEW: Track files with reviews
         localCommits: 0,
         localReviews: 0,
         globalCommits: 0,
         globalReviews: 0,
-        activeMonths: new Set()
+        activeMonths: new Set(),
+        lastActivityInPRFiles: null // NEW: Track last activity in PR files
       });
     });
   }
@@ -391,22 +395,33 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLogin
     prFileContributions.forEach(contrib => {
       const login = contrib.contributors.github_login;
       const filePath = contrib.files.current_path;
+      const activityDate = new Date(contrib.contribution_date);
       
       // Only process if we have this contributor in our map
       if (contributorMetrics.has(login)) {
         const metrics = contributorMetrics.get(login);
         metrics.knownFiles.add(filePath);
         
+        // Update last activity in PR files
+        if (!metrics.lastActivityInPRFiles || activityDate > metrics.lastActivityInPRFiles.date) {
+          metrics.lastActivityInPRFiles = {
+            date: activityDate,
+            type: contrib.activity_type
+          };
+        }
+        
         if (contrib.activity_type === 'commit') {
           metrics.localCommits++;
+          metrics.commitFiles.add(filePath); // NEW: Track commit files
         } else if (contrib.activity_type === 'review') {
           metrics.localReviews++;
+          metrics.reviewFiles.add(filePath); // NEW: Track review files
         }
       }
     });
   }
   
-  // Process global activity
+  // Process global activity (unchanged)
   if (globalContributions) {
     globalContributions.forEach(contrib => {
       const login = contrib.contributors.github_login;
@@ -432,15 +447,19 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLogin
     login: metrics.login,
     canonical_name: metrics.canonical_name,
     knows: metrics.knownFiles.size,
-    learns: filePaths.length - metrics.knownFiles.size, // NEW: Calculate learns
+    learns: filePaths.length - metrics.knownFiles.size,
+    commitFileCount: metrics.commitFiles.size, // NEW: Number of files with commits
+    reviewFileCount: metrics.reviewFiles.size, // NEW: Number of files with reviews
     lCommits: metrics.localCommits,
     lReviews: metrics.localReviews,
     gCommits: metrics.globalCommits,
     gReviews: metrics.globalReviews,
     aMonths: metrics.activeMonths.size,
-    knownFilesList: Array.from(metrics.knownFiles)
+    knownFilesList: Array.from(metrics.knownFiles),
+    lastActivityInPRFiles: metrics.lastActivityInPRFiles // NEW: Last activity info
   }));
   
+  // Rest of the function remains the same...
   // Calculate workload analytics
   console.log('📊 Calculating workload analytics...');
   const workloadData = await calculateWorkloadAnalytics(finalMetrics);
@@ -476,7 +495,7 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLogin
     }
   }
   
-  // Combine all metrics (including CxFactor)
+  // Combine all metrics (including new fields)
   const enhancedMetrics = finalMetrics.map(metrics => {
     const workload = workloadData.get(metrics.login) || {};
     const performance = performanceData.get(metrics.login) || {};
@@ -485,8 +504,6 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLogin
     const turnoverRecScore = turnoverRecScoreMap.get(metrics.login) || { turnoverRec: 0, learnRec: 0, retentionRec: 0, knowledge: 0 };
     const whoDoScore = whoDoByLoginMap.get(metrics.login) || { whoDoScore: 0, rawScore: 0, load: 0, totalOpenReviews: 0 };
 
-  
-    
     return {
       ...metrics,
       // Workload metrics
@@ -529,6 +546,96 @@ async function calculateDetailedReviewerMetrics(prFiles, prAuthor, achrevByLogin
   return enhancedMetrics.slice(0, 10); // Top 10 candidates
 }
 
+function selectTopCandidates(reviewerMetrics, prAuthor, totalPRFiles, topK = 5) {
+  // Filter out PR author and calculate derived metrics
+  const candidates = reviewerMetrics
+    .filter(m => m.login !== prAuthor)
+    .map(m => ({
+      ...m,
+      expertise: 1 - (m.learns / totalPRFiles), // 1 - (New Files / Total Files)
+      learnRate: m.learns / totalPRFiles,
+      lastActivityDays: m.lastActivityInPRFiles ? 
+        Math.floor((new Date() - m.lastActivityInPRFiles.date) / (1000 * 60 * 60 * 24)) : 
+        Infinity
+    }));
+
+  if (candidates.length === 0) return [];
+  if (candidates.length <= topK) return candidates;
+
+  const selected = [];
+  const remaining = [...candidates];
+
+  // Helper function to select best candidate based on criteria
+  const selectBest = (primary, secondary, tertiary) => {
+    if (remaining.length === 0) return null;
+    
+    remaining.sort((a, b) => {
+      if (Math.abs(b[primary] - a[primary]) > 1e-6) {
+        return b[primary] - a[primary];
+      }
+      if (Math.abs(a[secondary] - b[secondary]) > 1e-6) {
+        return a[secondary] - b[secondary];
+      }
+      if (Math.abs(a[tertiary] - b[tertiary]) > 1e-6) {
+        return a[tertiary] - b[tertiary];
+      }
+      return Math.random() - 0.5; // Random selection for ties
+    });
+    
+    return remaining.shift();
+  };
+
+  if (topK === 1) {
+    const best = selectBest('expertise', 'workloadShare', 'lastActivityDays');
+    if (best) selected.push(best);
+  } else if (topK === 2) {
+    // 1. Highest expertise, lowest workload
+    const expert = selectBest('expertise', 'workloadShare', 'lastActivityDays');
+    if (expert) selected.push(expert);
+    
+    // 2. Highest learn rate, lowest workload
+    const learner = selectBest('learnRate', 'workloadShare', 'lastActivityDays');
+    if (learner) selected.push(learner);
+  } else if (topK === 3) {
+    // 1. Highest expertise, lowest workload
+    const expert = selectBest('expertise', 'workloadShare', 'lastActivityDays');
+    if (expert) selected.push(expert);
+    
+    // 2. Highest learn rate, lowest workload
+    const learner = selectBest('learnRate', 'workloadShare', 'lastActivityDays');
+    if (learner) selected.push(learner);
+    
+    // 3. Lowest workload with higher expertise
+    const balanced = selectBest('workloadShare', 'expertise', 'lastActivityDays');
+    if (balanced) selected.push(balanced);
+  } else { // topK >= 4
+    // First 3 as above
+    const expert = selectBest('expertise', 'workloadShare', 'lastActivityDays');
+    if (expert) selected.push(expert);
+    
+    const learner = selectBest('learnRate', 'workloadShare', 'lastActivityDays');
+    if (learner) selected.push(learner);
+    
+    const balanced = selectBest('workloadShare', 'expertise', 'lastActivityDays');
+    if (balanced) selected.push(balanced);
+    
+    // For the rest, alternate between top expert and top learner
+    let isExpertTurn = true;
+    while (selected.length < topK && remaining.length > 0) {
+      if (isExpertTurn) {
+        const nextExpert = selectBest('expertise', 'workloadShare', 'lastActivityDays');
+        if (nextExpert) selected.push(nextExpert);
+      } else {
+        const nextLearner = selectBest('learnRate', 'workloadShare', 'lastActivityDays');
+        if (nextLearner) selected.push(nextLearner);
+      }
+      isExpertTurn = !isExpertTurn;
+    }
+  }
+
+  return selected;
+}
+
 function getChangeType(prFile) {
   if (prFile.status === 'added') return 'create';
   if (prFile.status === 'removed') return 'delete';
@@ -537,8 +644,33 @@ function getChangeType(prFile) {
   return 'modify'; // default
 }
 
-function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFiles) {
+function generateDetailedComment(fileAnalysis, reviewerMetrics, prAuthor, prFiles, topKCandidate = 5) {
   const filePaths = prFiles.map(f => f.filename);
+  const totalPRFiles = filePaths.length;
+
+  // Select top candidates
+  const topCandidates = selectTopCandidates(reviewerMetrics, prAuthor, totalPRFiles, topKCandidate);
+
+  // --- Build Candidates Overview section ---
+  let candidateScoreSection = `### 👥 Candidates Overview\n\n`;
+  
+  if (topCandidates.length === 0) {
+    candidateScoreSection += `_No suitable candidates found for this PR._\n\n`;
+  } else {
+    candidateScoreSection += `| Developer | Authorship | Review History | New Files | Last Contribution | Workload Share |
+|-----------|------------|----------------|-----------|-------------------|----------------|
+`;
+
+    topCandidates.forEach(candidate => {
+      const authorship = `${candidate.commitFileCount} / ${totalPRFiles}`;
+      const reviewHistory = `${candidate.reviewFileCount} / ${totalPRFiles}`;
+      const newFiles = `${candidate.learns} / ${totalPRFiles}`;
+      const lastContribution = timeago(candidate.lastActivityInPRFiles);
+      const workloadShare = `${candidate.workloadShare.toFixed(1)}%`;
+      
+      candidateScoreSection += `| \`${candidate.login}\` | ${authorship} | ${reviewHistory} | ${newFiles} | ${lastContribution} | ${workloadShare} |\n`;
+    });
+  }
 
   // --- Build Pull Request Analysis section (deferred to breakdown) ---
   let prAnalysisSection = `
@@ -669,12 +801,12 @@ No developers found with prior experience on these files. Consider assigning rev
   const workflowDispatchUrl = `${repoUrl}/actions/workflows/assign-reviewer-manual.yml`;
   
   // --- Candidate Reviewers Score table (this will be shown first) ---
-  let candidateScoreSection = '';
+  let recommenderScoreSection = '';
   if (RecommendationScores.length > 0) {
-    candidateScoreSection += `### 📝 Candidate Reviewers Score
+    recommenderScoreSection += `### 📝 Reviewer Recommendation Scores per Candidate
   
-  | Developer | Expertise Score | Knowledge Distribution Score | Workload Balancing Score |
-  |-----------|----------------|------------------------------|--------------------------|
+  | Developer | AcHRev | TurnoverRec | WhoDo |
+  |-----------|--------|-------------|-------|
   `;
   
     RecommendationScores.forEach(metrics => {
@@ -682,26 +814,20 @@ No developers found with prior experience on these files. Consider assigning rev
       const whoDoData = reviewerMetrics.find(rm => rm.login === metrics.login);
       const whoDoScore = whoDoData ? (whoDoData.whoDoScore || 0) : 0;
       
-      candidateScoreSection += `| \`${metrics.login}\` | ${(metrics.cxFactorScore || 0).toFixed(3)} | ${(metrics.turnoverRecScore || 0).toFixed(3)} | ${whoDoScore.toFixed(3)} |\n`;
+      recommenderScoreSection += `| \`${metrics.login}\` | ${(metrics.cxFactorScore || 0).toFixed(3)} | ${(metrics.turnoverRecScore || 0).toFixed(3)} | ${whoDoScore.toFixed(3)} |\n`;
     });
   
     // Add the Top Candidate row
-    candidateScoreSection += `| **Top Candidate** | \`${topExpert}\` | \`${topKD}\` | \`${topWhoDo}\` |\n`;
+    recommenderScoreSection += `| **Top Candidate** | \`${topExpert}\` | \`${topKD}\` | \`${topWhoDo}\` |\n`;
     
-    // Add the copy/paste command row
-    // candidateScoreSection += `| **Copy & Paste Command** | \`/assign-reviewer ${topExpert}\` | \`/assign-reviewer ${topKD}\` | \`/assign-reviewer ${topWhoDo}\` |\n`;
-    
-    // Add the workflow dispatch row
-    // candidateScoreSection += `| **One-Click Assignment** | [🚀 Assign ${topExpert}](${workflowDispatchUrl}) | [🚀 Assign ${topKD}](${workflowDispatchUrl}) | [🚀 Assign ${topWhoDo}](${workflowDispatchUrl}) |\n`;
-    
-    candidateScoreSection += `\n\n<h4>Assignment Options: Assign a reviewer by posting the following commands as a comment on this PR.</h4>\n`
+    recommenderScoreSection += `\n\n<h4>How to Assign the candidate? Assign a reviewer by posting the following commands as a comment on this PR.</h4>\n`
     
     // Collect all possible candidates
     const uniqueCandidates = [...new Set([topExpert, topKD, topWhoDo])];
     
     // Build assignment options
     uniqueCandidates.forEach(candidate => {
-      candidateScoreSection += `\n Assign <code>${candidate}</code>:\n
+      recommenderScoreSection += `\n Assign <code>${candidate}</code>:\n
       
       /assign-reviewer ${candidate}
       \n`;
@@ -710,34 +836,9 @@ No developers found with prior experience on these files. Consider assigning rev
 
   
   } else {
-    candidateScoreSection += `### 📝 Candidate Reviewers Score
+    recommenderScoreSection += `### 📝 Reviewer Recommendation Scores per Candidate
   
   _No candidate metrics available for this PR._\n`;
-  }
-  
-  // --- Now create the separate Quick Assign Reviewers table ---
-  let quickAssignSection = '';
-  
-  if (RecommendationScores.length > 0) {
-    // Get unique top candidates (now all variables are properly defined above)
-    const topCandidates = [...new Set([topExpert, topKD, topWhoDo].filter(candidate => candidate && candidate !== '_None_'))];
-    
-    if (topCandidates.length > 0) {
-      quickAssignSection += `\n### 🎯 Quick Assign Reviewers
-  
-  | Top Candidate | Quick Assign Command |
-  |---------------|---------------------|
-  `;
-  
-      topCandidates.forEach(candidate => {
-        quickAssignSection += `| \`${candidate}\` | \`/assign-reviewer ${candidate}\` |\n`;
-      });
-  
-      quickAssignSection += `\n**How to use:**
-  - Copy and paste any command above as a comment on this PR
-  - The reviewer will be automatically assigned
-  - Only the PR author, repository collaborators, members, and owners can assign reviewers\n\n`;
-    }
   }
 
   // --- Build Suggestions section (same logic as before) ---
@@ -748,7 +849,7 @@ No developers found with prior experience on these files. Consider assigning rev
   const hoardedFraction = hoardedCount / totalFiles;
 
   let suggestionsSection = `\n---
- ### 🔍 Suggestions:\n\n`;
+ ### 🤖 SofiaBot Suggestions:\n\n`;
 
   // Helper to format file lists
   function formatFileList(list) {
@@ -874,19 +975,19 @@ No developers found with prior experience on these files. Consider assigning rev
   // --- Assemble final comment: Candidate Score -> Suggestions -> Breakdown (collapsible with PR Analysis & Candidate Records) ---
   let comment = '';
 
-  // Candidate score first
+  // Candidate overview first
   comment += candidateScoreSection;
-
-  // comment += quickAssignSection;
 
   // Polished sentence before breakdown
   comment += `\n---\nYou can view detailed additional information about the candidate reviewers by clicking on the title of the section below.\n\n`;
 
   // Breakout (collapsible) containing the PR analysis and candidate records
-  comment += `<details>\n<summary><h3>📊 Pull Request Detailed Analysis:</h3></summary>\n\n`;
+  comment += `<details>\n<summary><h3>🔎 Detailed Analysis</h3></summary>\n\n`;
   comment += prAnalysisSection;
   comment += candidateRecordsSection;
   // Suggestions
+  comment += recommenderScoreSection;
+  comment += `\n---\n`
   comment += suggestionsSection;
   comment += `\n</details>\n`;
 
