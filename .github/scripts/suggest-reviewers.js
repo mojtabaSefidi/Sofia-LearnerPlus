@@ -986,7 +986,7 @@ No developers found with prior experience on these files. Consider assigning rev
     );
   
     if (remainingCandidates.length > 0) {
-      suggestionsSection += `\n---\n### 🔄 Other Options:\n`;
+      suggestionsSection += `\n\n### 🔄 Other Options:\n`;
       remainingCandidates.forEach(c => {
         let label = '';
         if (c === topExpert) label = '(Top Expert)';
@@ -1017,7 +1017,7 @@ No developers found with prior experience on these files. Consider assigning rev
   // Suggestions
   comment += recommenderScoreSection;
   comment += suggestionsSection;
-  comment += `\n\n<h4>How to Assign the candidate?</h4> Post the coresponding command as a comment on this PR.\n`;
+  comment += `\n\n<p>How to Assign the candidate?</p> Post the coresponding command as a comment on this PR.\n`;
   
   comment += `\n</details>\n`;
 
