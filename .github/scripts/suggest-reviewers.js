@@ -817,10 +817,10 @@ No developers found with prior experience on these files. Consider assigning rev
   let recommenderScoreSection = '';
   if (RecommendationScores.length > 0) {
     recommenderScoreSection += `### 📝 Reviewer Recommendation Scores
-    
-    | Developer | AcHRev (Expert) | TurnoverRec (Learner) | WhoDo (Workload Balancer) |
-    |-----------|-----------------|-----------------------|---------------------------|
-    `;
+
+| Developer | AcHRev (Expert) | TurnoverRec (Learner) | WhoDo (Workload Balancer) |
+|-----------|-----------------|-----------------------|---------------------------|
+`;
     
     RecommendationScores.forEach(metrics => {
       // Find the corresponding WhoDo score for this login
