@@ -1017,7 +1017,7 @@ No developers found with prior experience on these files. Consider assigning rev
 
 
   // Polished sentence before breakdown
-  comment += `\n---\n\n`;
+  comment += `\n---\n`;
   
   // Breakout (collapsible) containing the PR analysis and candidate records
   comment += `<details>\n<summary><h3>🔎 Detailed Analysis (Click Here)</h3></summary>\n\n`;
