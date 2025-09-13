@@ -88,10 +88,10 @@ jobs:
           # Build comment body
           body=""
           if [ -n "$assigned_fmt" ]; then
-            body+="🤖 **Reviewer(s) Assigned**: $assigned_fmt"
+            body+="🤖 **Reviewer(s) Assigned**: $assigned_fmt"$'\n\n'
           fi
           if [ -n "$failed_fmt" ]; then
-            body+="\n\n⚠️ **Assignment Failed**: Could not assign reviewer(s): $failed_fmt. Please check if usernames are valid and have repository access."
+            body+="⚠️ **Assignment Failed**: Could not assign reviewer(s): $failed_fmt. Please check if usernames are valid and have repository access."
           fi
           
           # Post final combined comment
