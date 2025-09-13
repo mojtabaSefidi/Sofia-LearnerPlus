@@ -816,7 +816,7 @@ No developers found with prior experience on these files. Consider assigning rev
   // --- Candidate Reviewers Score table (this will be shown first) ---
   let recommenderScoreSection = '';
   if (RecommendationScores.length > 0) {
-    recommenderScoreSection += `### 📝 Reviewer Recommendation Scores per Candidate
+    recommenderScoreSection += `### 📝 Reviewer Recommendation Scores
   
   | Developer | AcHRev | TurnoverRec | WhoDo |
   |-----------|--------|-------------|-------|
@@ -833,7 +833,7 @@ No developers found with prior experience on these files. Consider assigning rev
     // Add the Top Candidate row
     recommenderScoreSection += `| **Top Candidate** | \`${topExpert}\` | \`${topKD}\` | \`${topWhoDo}\` |\n`;
     
-    recommenderScoreSection += `\n\n<h4>How to Assign the candidate? Assign a reviewer by posting the following commands as a comment on this PR.</h4>\n`
+    //recommenderScoreSection += `\n\n<h4>How to Assign the candidate? Assign a reviewer by posting the following commands as a comment on this PR.</h4>\n`
     
     // Collect all possible candidates
     const uniqueCandidates = [...new Set([topExpert, topKD, topWhoDo])];
@@ -972,6 +972,7 @@ No developers found with prior experience on these files. Consider assigning rev
     } else {
       suggestionsSection += `\n _No suitable expert found_\n`;   
     }
+    
   } else {
     const workloadBalancer = pickWorkloadBalancer(1);
     suggestionsSection += `**Observation:** The author has adequate knowledge about the modified codes, so the risk of defects and knowledge loss is low.\n\n`;
@@ -1001,6 +1002,8 @@ No developers found with prior experience on these files. Consider assigning rev
   // Suggestions
   comment += recommenderScoreSection;
   comment += suggestionsSection;
+  comment += `\n\n<h4>How to Assign the candidate?</h4> Assign a reviewer by posting the following commands as a comment on this PR.\n`
+
   comment += `\n</details>\n`;
 
   return comment;
