@@ -1009,10 +1009,12 @@ No developers found with prior experience on these files. Consider assigning rev
   
   // Candidate overview first
   comment += candidateScoreSection;
-  comment += `\n\n**How to Assign the candidate?** Post the corresponding command as a comment on this PR. Replace \`Candidate\` with your desired reviewer.\n  
-  
+  comment += `\n\n**How to Assign the candidate?** Post the corresponding command as a comment on this PR. Replace \`Candidate\` with your desired reviewer.\n
+
+  \`\`\`
   /assign-reviewer Candidate
-  \n`;
+  \`\`\`\n`;
+
 
   // Polished sentence before breakdown
   comment += `\n---\n\n`;
@@ -1024,7 +1026,7 @@ No developers found with prior experience on these files. Consider assigning rev
   // Suggestions
   comment += recommenderScoreSection;
   comment += suggestionsSection;
-  comment += `\n\n<p>**How to Assign the candidate?** Post the corresponding command as a comment on this PR.</p>\n`;
+  comment += `\n\n**How to Assign the candidate?** Post the corresponding command as a comment on this PR.\n`;
   
   comment += `\n</details>\n`;
 
