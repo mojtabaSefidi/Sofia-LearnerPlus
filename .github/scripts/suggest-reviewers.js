@@ -988,12 +988,15 @@ No developers found with prior experience on these files. Consider assigning rev
     if (remainingCandidates.length > 0) {
       suggestionsSection += `\n---\n### 🔄 Other Options:\n`;
       remainingCandidates.forEach(c => {
-        let label = '';
-        if (c === topExpert) label = '(Top Expert)';
-        else if (c === topKD) label = '(Top Learner)';
-        else if (c === topWhoDo) label = '(Top Workload Balancer)';
+        let labels = [];
+        if (c === topExpert) labels.push('Top Expert');
+        if (c === topKD) labels.push('Top Learner');
+        if (c === topWhoDo) labels.push('Top Workload Balancer');
+    
+        // Join labels with " & " if multiple
+        const labelText = labels.length > 0 ? `(${labels.join(' & ')})` : '';
   
-        suggestionsSection += `\nAssign \`${c}\` ${label}:\n
+        suggestionsSection += `\nAssign \`${c}\` ${labelText}:\n
         
         /assign-reviewer ${c}
         \n`;
@@ -1006,12 +1009,16 @@ No developers found with prior experience on these files. Consider assigning rev
   
   // Candidate overview first
   comment += candidateScoreSection;
+  comment += `\n\n**How to Assign the candidate?** Post the corresponding command as a comment on this PR. Replace `Candidate` with your desired reviewer.\n
   
+  /assign-reviewer Candidate
+        \n`;
+
   // Polished sentence before breakdown
-  comment += `\n---\nYou can view detailed additional information about the candidate reviewers by clicking on the title of the section below.\n\n`;
+  comment += `\n---\n\n`;
   
   // Breakout (collapsible) containing the PR analysis and candidate records
-  comment += `<details>\n<summary><h3>🔎 Detailed Analysis</h3></summary>\n\n`;
+  comment += `<details>\n<summary><h3>🔎 Detailed Analysis (Click Here)</h3></summary>\n\n`;
   comment += prAnalysisSection;
   comment += candidateRecordsSection;
   // Suggestions
