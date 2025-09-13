@@ -4,10 +4,10 @@ on:
     types: [created]
   issue_comment:
     types: [created]
+
 jobs:
   assign-reviewer:
     runs-on: ubuntu-latest
-    # Safety check: Only run on PR comments, not regular issues
     if: github.event.pull_request != null || github.event.issue.pull_request != null
     
     permissions:
@@ -22,7 +22,6 @@ jobs:
       - name: Check if PR and parse command
         id: parse
         run: |
-          # Handle both PR review comments and issue comments on PRs
           if [ "${{ github.event_name }}" == "pull_request_review_comment" ]; then
             comment="${{ github.event.comment.body }}"
             pr_number="${{ github.event.pull_request.number }}"
@@ -34,38 +33,66 @@ jobs:
             exit 0
           fi
           
-          # Strip leading/trailing whitespace and normalize internal spaces
+          # Normalize whitespace
           comment=$(echo "$comment" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/[[:space:]]\+/ /g')
           
-          # Parse the command (now handles spaces at beginning, middle, and end)
-          if [[ "$comment" =~ ^/assign-reviewer[[:space:]]+([a-zA-Z0-9_-]+) ]]; then
-            reviewer="${BASH_REMATCH[1]}"
-            # Strip any trailing whitespace from the extracted reviewer name
-            reviewer=$(echo "$reviewer" | sed 's/[[:space:]]*$//')
-            echo "reviewer=$reviewer" >> $GITHUB_OUTPUT
+          # Match command: /assign-reviewer usernameA, usernameB ...
+          if [[ "$comment" =~ ^/assign-reviewer[[:space:]]+(.+) ]]; then
+            reviewers_raw="${BASH_REMATCH[1]}"
+            
+            # Split on commas or spaces, remove @ if included
+            reviewers=$(echo "$reviewers_raw" | tr ',' ' ' | xargs -n1 | sed 's/^@//' | tr '\n' ' ')
+            
+            echo "reviewers=$reviewers" >> $GITHUB_OUTPUT
             echo "pr_number=$pr_number" >> $GITHUB_OUTPUT
             echo "valid_command=true" >> $GITHUB_OUTPUT
-            echo "Found valid command: /assign-reviewer $reviewer for PR #$pr_number"
+            echo "Found reviewers: $reviewers for PR #$pr_number"
           else
             echo "valid_command=false" >> $GITHUB_OUTPUT
             echo "Comment does not contain valid /assign-reviewer command"
             exit 0
           fi
         
-      - name: Assign Reviewer to PR
+      - name: Assign Reviewer(s) Individually
         if: steps.parse.outputs.valid_command == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Assign the reviewer to the PR
-          gh pr edit ${{ steps.parse.outputs.pr_number }} --add-reviewer "${{ steps.parse.outputs.reviewer }}"
+          pr_number="${{ steps.parse.outputs.pr_number }}"
+          reviewers="${{ steps.parse.outputs.reviewers }}"
           
-          # Post a confirmation comment
-          gh pr comment ${{ steps.parse.outputs.pr_number }} --body "🤖 **Reviewer Assigned**: @${{ steps.parse.outputs.reviewer }} has been requested to review this PR."
+          assigned=""
+          failed=""
           
-      - name: Handle Assignment Failure
-        if: failure() && steps.parse.outputs.valid_command == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh pr comment ${{ steps.parse.outputs.pr_number }} --body "⚠️ **Assignment Failed**: Could not assign @${{ steps.parse.outputs.reviewer }} as a reviewer. Please check if the username is valid and they have repository access."
+          for r in $reviewers; do
+            echo "Trying to assign reviewer: $r"
+            if gh pr edit "$pr_number" --add-reviewer "$r"; then
+              assigned="$assigned,$r"
+            else
+              failed="$failed,$r"
+            fi
+          done
+          
+          # Trim leading commas
+          assigned=$(echo "$assigned" | sed 's/^,//')
+          failed=$(echo "$failed" | sed 's/^,//')
+          
+          # Format lists with @mentions and commas
+          if [ -n "$assigned" ]; then
+            assigned_fmt=$(echo "$assigned" | sed 's/\([^,]\+\)/@\1/g' | sed 's/,/, /g')
+          fi
+          if [ -n "$failed" ]; then
+            failed_fmt=$(echo "$failed" | sed 's/\([^,]\+\)/@\1/g' | sed 's/,/, /g')
+          fi
+          
+          # Build comment body
+          body=""
+          if [ -n "$assigned_fmt" ]; then
+            body+="🤖 **Reviewer(s) Assigned**: $assigned_fmt"
+          fi
+          if [ -n "$failed_fmt" ]; then
+            body+="\n\n⚠️ **Assignment Failed**: Could not assign reviewer(s): $failed_fmt. Please check if usernames are valid and have repository access."
+          fi
+          
+          # Post final combined comment
+          gh pr comment "$pr_number" --body "$body"
