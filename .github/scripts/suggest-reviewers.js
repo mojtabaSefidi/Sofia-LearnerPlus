@@ -1017,7 +1017,7 @@ No developers found with prior experience on these files. Consider assigning rev
   // Suggestions
   comment += recommenderScoreSection;
   comment += suggestionsSection;
-  comment += `\n\n<p>How to Assign the candidate? Post the corresponding command as a comment on this PR.</p>\n`;
+  comment += `\n\n<p>**How to Assign the candidate?** Post the corresponding command as a comment on this PR.</p>\n`;
   
   comment += `\n</details>\n`;
 
