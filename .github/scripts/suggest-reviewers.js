@@ -817,11 +817,11 @@ No developers found with prior experience on these files. Consider assigning rev
   let recommenderScoreSection = '';
   if (RecommendationScores.length > 0) {
     recommenderScoreSection += `### 📝 Reviewer Recommendation Scores
-  
-  | Developer | AcHRev | TurnoverRec | WhoDo |
-  |-----------|--------|-------------|-------|
-  `;
-  
+    
+    | Developer | AcHRev (Expert) | TurnoverRec (Learner) | WhoDo (Workload Balancer) |
+    |-----------|-----------------|-----------------------|---------------------------|
+    `;
+    
     RecommendationScores.forEach(metrics => {
       // Find the corresponding WhoDo score for this login
       const whoDoData = reviewerMetrics.find(rm => rm.login === metrics.login);
@@ -833,49 +833,40 @@ No developers found with prior experience on these files. Consider assigning rev
     // Add the Top Candidate row
     recommenderScoreSection += `| **Top Candidate** | \`${topExpert}\` | \`${topKD}\` | \`${topWhoDo}\` |\n`;
     
-    //recommenderScoreSection += `\n\n<h4>How to Assign the candidate? Assign a reviewer by posting the following commands as a comment on this PR.</h4>\n`
-    
     // Collect all possible candidates
-    const uniqueCandidates = [...new Set([topExpert, topKD, topWhoDo])];
-    
-    // Build assignment options
-    uniqueCandidates.forEach(candidate => {
-      recommenderScoreSection += `\n Assign <code>${candidate}</code>:\n
-      
-      /assign-reviewer ${candidate}
-      \n`;
-    });
-
-
+    var uniqueTopCandidates = [...new Set([topExpert, topKD, topWhoDo])];
   
   } else {
-    recommenderScoreSection += `### 📝 Reviewer Recommendation Scores per Candidate
-  
-  _No candidate metrics available for this PR._\n`;
+    recommenderScoreSection += `### 📝 Reviewer Recommendation Scores
+    
+    _No candidate metrics available for this PR._\n`;
   }
-
+  
   // --- Build Suggestions section (same logic as before) ---
   const totalFiles = filePaths.length || 1; // avoid division by zero
   const hoardedCount = hoardedFiles.length;
   const abandonedCount = abandonedFiles.length;
   const authorNoCxCount = authorNoCxFiles.length;
   const hoardedFraction = hoardedCount / totalFiles;
-
+  
   let suggestionsSection = `\n---
- ### 🤖 SofiaBot Suggestions:\n\n`;
-
+   ### 🤖 SofiaBot Suggestions:\n\n`;
+  
+  // Track suggested candidates
+  let suggestedCandidates = [];
+  
   // Helper to format file lists
   function formatFileList(list) {
     if (!list || list.length === 0) return '_None_';
     return list.map(f => `- \`${f}\``).join('\n');
   }
-
+  
   // Condition priority: 4 > 3 > 2 > 1
   const hasCondition4 = ( (abandonedCount > 0 || hoardedFraction > 0.5) && authorNoCxCount > 0 );
   const hasCondition3 = (abandonedCount > 0 || hoardedFraction > 0.5);
   const hasCondition2 = (hoardedCount > 0 && hoardedFraction <= 0.5);
   const hasCondition1 = (authorNoCxCount > 0);
-
+  
   // Candidate picking functions (respect tie-breakers)
   function pickExpert(count = 1) {
     return pickTopCandidates('cxFactorScore', 'whoDoScore', 'turnoverRecScore', count);
@@ -886,8 +877,8 @@ No developers found with prior experience on these files. Consider assigning rev
   function pickWorkloadBalancer(count = 1) {
     return pickTopCandidates('whoDoScore', 'turnoverRecScore', 'cxFactorScore', count);
   }
-
-  // Execute suggestions (same content as original)
+  
+  // Execute suggestions (same content as original, but now track candidates)
   if (hasCondition4) {
     // Condition 4: abandoned or >50% hoarded AND author first-touch on some files
     const learners = pickLearner(1);
@@ -904,22 +895,14 @@ No developers found with prior experience on these files. Consider assigning rev
     }
     suggestionsSection += `**Recommendation:** Assign **two reviewers**:\n`;
     if (learners.length > 0) {
-      suggestionsSection += `  - A committed **learner** to distribute knowledge:\n`
-      suggestionsSection += `\n
-      
-      /assign-reviewer ${learner[0]}
-      \n`;
-
+      suggestionsSection += `  - A committed **learner** to distribute knowledge:\n\n/assign-reviewer ${learners[0]}\n`;
+      suggestedCandidates.push(learners[0]);
     } else {
       suggestionsSection += `  - No suitable learner candidate found.\n`;
     }
     if (experts.length > 0) {
-      suggestionsSection += `  - An **expert reviewer** to ensure defect detection:\n`
-      suggestionsSection += `\n
-      
-      /assign-reviewer ${experts[0]}
-      \n`;
-      
+      suggestionsSection += `  - An **expert reviewer** to ensure defect detection:\n\n/assign-reviewer ${experts[0]}\n`;
+      suggestedCandidates.push(experts[0]);
     } else {
       suggestionsSection += `  - No suitable expert candidate found.\n`;
     }
@@ -933,12 +916,11 @@ No developers found with prior experience on these files. Consider assigning rev
     if (hoardedFiles.length > 0) {
       suggestionsSection += `**Hoarded files:**\n${formatFileList(hoardedFiles)}\n\n`;
     }
-    suggestionsSection += `**Recommendation:** Assign **two learners** to distribute knowledge more broadly.\n` 
+    suggestionsSection += `**Recommendation:** Assign **two learners** to distribute knowledge more broadly.\n`;
     if (learners.length > 0) {
       for (let i = 0; i < learners.length; i++) {
-        suggestionsSection += `\n Assign <code>${learners[i]}</code>:\n
-        /assign-reviewer ${learners[i]}
-        \n`;
+        suggestionsSection += `\n Assign <code>${learners[i]}</code>:\n/assign-reviewer ${learners[i]}\n`;
+        suggestedCandidates.push(learners[i]);
       }
     } else {
       suggestionsSection += `\n _No suitable candidate found_\n`;   
@@ -948,53 +930,65 @@ No developers found with prior experience on these files. Consider assigning rev
     const learner = pickLearner(1);
     suggestionsSection += `**Observation:** There exist **${hoardedCount} hoarded** file(s) in this PR:\n\n`;
     suggestionsSection += `${formatFileList(hoardedFiles)}\n\n`;
-    suggestionsSection += `**Recommendation:** Assign a **learner** to distribute knowledge.\n`
+    suggestionsSection += `**Recommendation:** Assign a **learner** to distribute knowledge.\n`;
     if (learner.length > 0) {
-      suggestionsSection += `\n Assign <code>${learner[0]}</code>:\n
-      
-      /assign-reviewer ${learner[0]}
-      \n`;
+      suggestionsSection += `\n Assign <code>${learner[0]}</code>:\n/assign-reviewer ${learner[0]}\n`;
+      suggestedCandidates.push(learner[0]);
     } else {
       suggestionsSection += `\n _No suitable candidate found_\n`;   
     }
-    
   } else if (hasCondition1) {
     // Condition 1: author lacks experience on some files (CxFactor 0), but no abandoned/hoarded major issue
     const expert = pickExpert(1);
     suggestionsSection += `**Observation:** The author has **no prior experience** on these file(s):\n\n`;
     suggestionsSection += `${formatFileList(authorNoCxFiles)}\n\n`;
-    suggestionsSection += `**Recommendation:** Assign an **expert reviewer** to reduce defect risk.\n`
+    suggestionsSection += `**Recommendation:** Assign an **expert reviewer** to reduce defect risk.\n`;
     if (expert.length > 0) {
-      suggestionsSection += `\n
-      
-      /assign-reviewer ${expert[0]}
-      \n`;
+      suggestionsSection += `\n/assign-reviewer ${expert[0]}\n`;
+      suggestedCandidates.push(expert[0]);
     } else {
       suggestionsSection += `\n _No suitable expert found_\n`;   
     }
-    
   } else {
     const workloadBalancer = pickWorkloadBalancer(1);
     suggestionsSection += `**Observation:** The author has adequate knowledge about the modified codes, so the risk of defects and knowledge loss is low.\n\n`;
-    suggestionsSection += `**Recommendation:** Assign a developer with a low workload to avoid overburdening expert reviewers:\n`
+    suggestionsSection += `**Recommendation:** Assign a developer with a low workload to avoid overburdening expert reviewers:\n`;
     if (workloadBalancer.length > 0) {
-      suggestionsSection += `\n Assign <code>${workloadBalancer[0]}</code>:\n
-      
-      /assign-reviewer ${workloadBalancer[0]}
-      \n`;
+      suggestionsSection += `\n Assign <code>${workloadBalancer[0]}</code>:\n/assign-reviewer ${workloadBalancer[0]}\n`;
+      suggestedCandidates.push(workloadBalancer[0]);
     } else {
       suggestionsSection += `\n _No suitable candidate found automatically_\n`;    
     }
   }
+  
+  // 🔄 Add "Other Options" section
+  if (uniqueTopCandidates && uniqueTopCandidates.length > 0) {
+    const remainingCandidates = uniqueTopCandidates.filter(
+      candidate => !suggestedCandidates.includes(candidate)
+    );
+  
+    if (remainingCandidates.length > 0) {
+      suggestionsSection += `\n---\n### 🔄 Other Options:\n`;
+      remainingCandidates.forEach(c => {
+        let label = '';
+        if (c === topExpert) label = '(Top Expert)';
+        else if (c === topKD) label = '(Top Learner)';
+        else if (c === topWhoDo) label = '(Top Workload Balancer)';
+  
+        suggestionsSection += `\nAssign \`${c}\` ${label}:\n/assign-reviewer ${c}\n`;
+      });
+    }
+  }
+  
   // --- Assemble final comment: Candidate Score -> Suggestions -> Breakdown (collapsible with PR Analysis & Candidate Records) ---
   let comment = '';
-
+  
   // Candidate overview first
   comment += candidateScoreSection;
-
+  
   // Polished sentence before breakdown
   comment += `\n---\nYou can view detailed additional information about the candidate reviewers by clicking on the title of the section below.\n\n`;
-
+  
   // Breakout (collapsible) containing the PR analysis and candidate records
   comment += `<details>\n<summary><h3>🔎 Detailed Analysis</h3></summary>\n\n`;
   comment += prAnalysisSection;
@@ -1002,9 +996,10 @@ No developers found with prior experience on these files. Consider assigning rev
   // Suggestions
   comment += recommenderScoreSection;
   comment += suggestionsSection;
-  comment += `\n\n<h4>How to Assign the candidate?</h4> Assign a reviewer by posting the following commands as a comment on this PR.\n`
-
+  comment += `\n\n<h4>How to Assign the candidate?</h4> Post the coresponding command as a comment on this PR.\n`;
+  
   comment += `\n</details>\n`;
+
 
   return comment;
 }
