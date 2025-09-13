@@ -924,13 +924,16 @@ No developers found with prior experience on these files. Consider assigning rev
     }
     suggestionsSection += `**Recommendation:** Assign **two learners** to distribute knowledge more broadly.\n`;
     if (learners.length > 0) {
-      for (let i = 0; i < learners.length; i++) {
-        suggestionsSection += `\n Assign <code>${learners[i]}</code>:\n
-        
-        /assign-reviewer ${learners[i]}
-        \n`;
-        suggestedCandidates.push(learners[i]);
-      }
+      const learnersHighlighted = learners.map(l => `<code>${l}</code>`);
+      const learnersList = learnersHighlighted.join(" & ");
+      const assignCommand = learners.join(", ");
+    
+      suggestionsSection += `\nAssign ${learnersList}:\n\n
+      
+      /assign-reviewer ${assignCommand}
+      \n`;
+    
+      suggestedCandidates.push(...learners); 
     } else {
       suggestionsSection += `\n _No suitable candidate found_\n`;   
     }    
@@ -1009,7 +1012,8 @@ No developers found with prior experience on these files. Consider assigning rev
   
   // Candidate overview first
   comment += candidateScoreSection;
-  comment += `\n\n**How to Assign the candidate?** Post the corresponding command as a comment on this PR. Replace \`Candidate\` with your desired reviewer.\n
+  comment += `\n\n**How to Assign the candidate?** Post the corresponding command as a comment on this PR. Replace \`Candidate\` with your desired reviewer.
+  To assign multiple reviewers, separate their usernames with commas.\n
 
   \`\`\`
   /assign-reviewer Candidate
