@@ -169,7 +169,7 @@ async function suggestReviewers() {
         1.0,             // C3
         1.0,             // C4
         0.5,             // theta
-        true            // verbose
+        false            // verbose
         
       );
     } catch (err) {
@@ -895,13 +895,19 @@ No developers found with prior experience on these files. Consider assigning rev
     }
     suggestionsSection += `**Recommendation:** Assign **two reviewers**:\n`;
     if (learners.length > 0) {
-      suggestionsSection += `  - A committed **learner** to distribute knowledge:\n\n/assign-reviewer ${learners[0]}\n`;
+      suggestionsSection += `  - A committed **learner** to distribute knowledge:\n\n
+      
+      /assign-reviewer ${learners[0]}
+      \n`;
       suggestedCandidates.push(learners[0]);
     } else {
       suggestionsSection += `  - No suitable learner candidate found.\n`;
     }
     if (experts.length > 0) {
-      suggestionsSection += `  - An **expert reviewer** to ensure defect detection:\n\n/assign-reviewer ${experts[0]}\n`;
+      suggestionsSection += `  - An **expert reviewer** to ensure defect detection:\n\n
+      
+      /assign-reviewer ${experts[0]}
+      \n`;
       suggestedCandidates.push(experts[0]);
     } else {
       suggestionsSection += `  - No suitable expert candidate found.\n`;
@@ -919,7 +925,10 @@ No developers found with prior experience on these files. Consider assigning rev
     suggestionsSection += `**Recommendation:** Assign **two learners** to distribute knowledge more broadly.\n`;
     if (learners.length > 0) {
       for (let i = 0; i < learners.length; i++) {
-        suggestionsSection += `\n Assign <code>${learners[i]}</code>:\n/assign-reviewer ${learners[i]}\n`;
+        suggestionsSection += `\n Assign <code>${learners[i]}</code>:\n
+        
+        /assign-reviewer ${learners[i]}
+        \n`;
         suggestedCandidates.push(learners[i]);
       }
     } else {
@@ -932,7 +941,10 @@ No developers found with prior experience on these files. Consider assigning rev
     suggestionsSection += `${formatFileList(hoardedFiles)}\n\n`;
     suggestionsSection += `**Recommendation:** Assign a **learner** to distribute knowledge.\n`;
     if (learner.length > 0) {
-      suggestionsSection += `\n Assign <code>${learner[0]}</code>:\n/assign-reviewer ${learner[0]}\n`;
+      suggestionsSection += `\n Assign <code>${learner[0]}</code>:\n
+      
+      /assign-reviewer ${learner[0]}
+      \n`;
       suggestedCandidates.push(learner[0]);
     } else {
       suggestionsSection += `\n _No suitable candidate found_\n`;   
@@ -944,7 +956,10 @@ No developers found with prior experience on these files. Consider assigning rev
     suggestionsSection += `${formatFileList(authorNoCxFiles)}\n\n`;
     suggestionsSection += `**Recommendation:** Assign an **expert reviewer** to reduce defect risk.\n`;
     if (expert.length > 0) {
-      suggestionsSection += `\n/assign-reviewer ${expert[0]}\n`;
+      suggestionsSection += `\n
+      
+      /assign-reviewer ${expert[0]}
+      \n`;
       suggestedCandidates.push(expert[0]);
     } else {
       suggestionsSection += `\n _No suitable expert found_\n`;   
@@ -954,7 +969,10 @@ No developers found with prior experience on these files. Consider assigning rev
     suggestionsSection += `**Observation:** The author has adequate knowledge about the modified codes, so the risk of defects and knowledge loss is low.\n\n`;
     suggestionsSection += `**Recommendation:** Assign a developer with a low workload to avoid overburdening expert reviewers:\n`;
     if (workloadBalancer.length > 0) {
-      suggestionsSection += `\n Assign <code>${workloadBalancer[0]}</code>:\n/assign-reviewer ${workloadBalancer[0]}\n`;
+      suggestionsSection += `\n Assign <code>${workloadBalancer[0]}</code>:\n
+      
+      /assign-reviewer ${workloadBalancer[0]}
+      \n`;
       suggestedCandidates.push(workloadBalancer[0]);
     } else {
       suggestionsSection += `\n _No suitable candidate found automatically_\n`;    
@@ -975,7 +993,10 @@ No developers found with prior experience on these files. Consider assigning rev
         else if (c === topKD) label = '(Top Learner)';
         else if (c === topWhoDo) label = '(Top Workload Balancer)';
   
-        suggestionsSection += `\nAssign \`${c}\` ${label}:\n/assign-reviewer ${c}\n`;
+        suggestionsSection += `\nAssign \`${c}\` ${label}:\n
+        
+        /assign-reviewer ${c}
+        \n`;
       });
     }
   }
