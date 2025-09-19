@@ -1,2 +1,0 @@
-﻿dotnet-rgit --cmd map-git-github-names  --conf-path "C:\Users\s_irsaee\Documents\relationalgit_corefx2.json"
-dotnet-rgit --cmd extract-dev-info  --conf-path "C:\Users\s_irsaee\Documents\relationalgit_corefx2.json"
