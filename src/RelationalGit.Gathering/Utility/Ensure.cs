@@ -4,6 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 /// <summary>
 /// Copied from OctoKit.Net source code
 /// </summary>
+
 namespace RelationalGit.Gathering
 {
     /// <summary>
