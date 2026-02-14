@@ -32,7 +32,7 @@ For example, you can find answers to the following questions by running a simple
 
 ### Install (dotnet Global Tool)
 
-SofiaWL-LearnerPlusPlus is a [dotnet Global tool](https://www.nuget.org/packages/SofiaWL-LearnerPlusPlus) based on RelationalGit. You should install this tool to run the simulations. You can use it seamlessly with your favorite command-line application. 
+```SofiaWL-LearnerPlusPlus``` is a [dotnet Global tool](https://www.nuget.org/packages/SofiaWL-LearnerPlusPlus) based on RelationalGit. You should install this tool to run the simulations. You can use it seamlessly with your favorite command-line application. 
 
 ```PowerShell
 dotnet tool install --global SofiaWL-LearnerPlusPlus --version 1.1.5
