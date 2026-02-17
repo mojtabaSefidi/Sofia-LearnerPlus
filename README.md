@@ -1,5 +1,5 @@
 # Replication Package
-This repository contains the necessary data to replicate the information from the study "_The Cost vs. the Benefit of Adding an Extra Code Reviewer to Mitigate Developer Turnover through Reviewer Recommenders_", which is presented at the [ICSE'26](https://conf.researchr.org/details/icse-2026/icse-2026-research-track/28/The-Cost-vs-the-Benefit-of-Adding-an-Extra-Code-Reviewer-to-Mitigate-Developer-Turnov) conference. First, you should install the dependencies for the replication package, and then follow the instructions in the [README File](ReplicationPackage/README.md) to run the simulations.
+This repository contains the necessary data to replicate the information from the study "_The Cost vs. the Benefit of Adding an Extra Code Reviewer to Mitigate Developer Turnover through Reviewer Recommenders_", which is accepted for presentation at the [ICSE'26](https://conf.researchr.org/details/icse-2026/icse-2026-research-track/28/The-Cost-vs-the-Benefit-of-Adding-an-Extra-Code-Reviewer-to-Mitigate-Developer-Turnov) conference. First, you should install the dependencies for the replication package, and then follow the instructions in the [README File](ReplicationPackage/README.md) to run the simulations.
 
 ## Dependencies
 
